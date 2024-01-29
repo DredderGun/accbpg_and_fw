@@ -54,3 +54,12 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# images
+output*.png
+
+# idea
+.idea/
+
+# temp files
+/ipynb/ABPGvsFW/TestForFW_REL.ipynb

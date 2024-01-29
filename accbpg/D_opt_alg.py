@@ -184,3 +184,140 @@ def D_opt_FW_away(V, x0, eps, maxitrs, verbose=True, verbskip=1):
     T = T[0:k+1]
     return x, F, SP, SN, T
 
+
+def D_opt_FW_RS(V, h, L, x0, eps, maxitrs, gamma, verbose=True, verbskip=1):
+    """
+    Solve the D-optimal design problem by the Frank-Wolfe algorithm
+        minimize     - log(det(V*diag(x)*V'))
+        subject to   x >= 0  and sum_i x_i=1
+    where V is m by n matrix and x belongs to n-dimensional simplex
+
+    Inputs:
+        V:  matrix of size m by n with m < n
+        x0: initial point
+        eps: precision for optimality conditions (complementary slackness)
+        maxitrs: maximum number of iterations
+        verbose:  display computational progress (True or False)
+        verbskip: number of iterations to skip between displays
+
+    Returns (x, F, SP, SN, T):
+        x:  the last iterate of BPG
+        F:  array storing F(x[k]) for all k
+        SP: positive slackness
+        SN: negative slackness
+        T:  array storing time used up to iteration k
+    """
+    start_time = time.time()
+
+    m, n = V.shape
+    F = np.zeros(maxitrs)
+    SP = np.zeros(maxitrs)
+    SN = np.zeros(maxitrs)
+    T = np.zeros(maxitrs)
+
+    x = np.copy(x0)
+    VXVT = np.dot(V * x, V.T)
+    detVXVT = np.linalg.det(VXVT)
+    H = np.linalg.inv(VXVT)
+
+    # compute w = - gradient # This step cost m^2*n
+    w = np.sum(V * np.dot(H, V), axis=0)
+
+    print("Start point value: " + str(- np.log(detVXVT)))
+
+    if verbose:
+        print("\nSolving D-opt design problem using Frank-Wolfe RS method")
+        print("     k      F(x)     pos_slack   neg_slack    time")
+
+    def mk_bas_v(n, i):
+        arr = np.zeros(n)
+        arr += 1e-7
+        arr[i] = 1
+        return arr
+
+    for k in range(maxitrs):
+        F[k] = - np.log(detVXVT)
+        T[k] = time.time() - start_time
+
+        # compute w = - gradient # This step cost m^2*n
+        # w = np.sum(V * np.dot(H, V), axis=0)
+
+        # check approximate optimality conditions
+        i = np.argmax(w)
+        w_xpos = w[x > 0]
+        j = np.argmin(w_xpos)
+
+        eps_pos = w[i] / m - 1
+        eps_neg = 1 - w_xpos[j] / m
+        SP[k] = eps_pos
+        SN[k] = eps_neg
+
+        if verbose and k % verbskip == 0:
+            print("{0:6d}  {1:10.3e}  {2:10.3e}  {3:10.3e}  {4:6.1f}".format(
+                k, F[k], eps_pos, eps_neg, T[k]))
+
+        if eps_pos <= eps and eps_neg <= eps:
+            break
+
+        # t = (w[i] / m - 1) / (w[i] - 1)
+        s_k = mk_bas_v(x.shape[0], i)
+        t = min((-np.dot(w, s_k - x) / (2 * L * h.divergence(s_k, x))) ** (gamma / (gamma - 1)), 0.999999)
+        x *= (1 - t)  # x_k - \alpha x_k
+        x[i] += t  # + \alpha s_k, где s_k \in LMO(x_k) = 1_i
+        HVi = np.dot(H, V[:, i])
+        H = (H - (t / (1 + t * (w[i] - 1))) * np.outer(HVi, HVi)) / (1 - t)
+        detVXVT *= np.power(1 - t, m - 1) * (1 + t * (w[i] - 1))
+        # compute w more efficiently # This step cost m*n
+        w = (w - (t / (1 + t * (w[i] - 1))) * np.dot(HVi, V) ** 2) / (1 - t)
+
+    F = F[0:k + 1]
+    SP = SP[0:k + 1]
+    SN = SN[0:k + 1]
+    T = T[0:k + 1]
+    return x, F, SP, SN, T
+
+
+def D_opt_FW_RS_adaptive(f, h, L, x0, maxitrs, gamma, epsilon=1e-14, linesearch=True, ls_ratio=2,
+                          verbose=True, verbskip=1):
+    if verbose:
+        print("\nFW RS adaptive method for min_{x in C} F(x) = f(x) + Psi(x)")
+        print("     k      F(x)         Lk       time")
+
+    start_time = time.time()
+    F = np.zeros(maxitrs)
+    Ls = np.ones(maxitrs) * L
+    T = np.zeros(maxitrs)
+
+    x = np.copy(x0)
+    for k in range(maxitrs):
+        fx, g = f.func_grad(x)
+        F[k] = fx + h.extra_Psi(x)
+        T[k] = time.time() - start_time
+        s_k = np.zeros(x.shape)
+        s_k += 1e-60
+        s_k[np.argmin(g)] = 1  # s_k \in LMO for simplex
+        d_k = s_k - x
+        div = h.divergence(s_k, x)
+        grad_d_prod = np.dot(g, d_k)
+
+        L = L / ls_ratio
+        while True:
+            alpha_k = min((-grad_d_prod / (2 * L * div)) ** (1 / (gamma - 1)), 1)
+            x1 = x + alpha_k * d_k
+            if f.func_grad(x1, flag=0) <= fx + alpha_k * grad_d_prod + alpha_k ** gamma * L * div:
+                break
+            L = L * ls_ratio
+        x = x1
+
+        Ls[k] = L
+        if verbose and k % verbskip == 0:
+            print("{0:6d}  {1:10.3e}  {2:10.3e}  {3:6.1f}".format(k, F[k], L, T[k]))
+
+        # stopping criteria
+        if k > 0 and abs(F[k] - F[k - 1]) < epsilon:
+            break
+
+    F = F[0:k + 1]
+    Ls = Ls[0:k + 1]
+    T = T[0:k + 1]
+    return x, F, Ls, T
