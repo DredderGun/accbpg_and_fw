@@ -18,6 +18,7 @@ def lmo_positive_ball(radius, is_shifted_pos_ball=False):
             s += center
 
         s[s < 0] = 1e-12
+        return s
 
     return lambda g: f(g)
 
