@@ -165,6 +165,44 @@ def Poisson_regrL2(m, n, noise=0.01, lamda=0, randseed=-1, normalizeA=True):
     return f, h, L, x0
 
 
+def Poisson_regrL2_ball(m, n, radius=1, noise=0.01, lamda=0, randseed=-1, normalizeA=True):
+    """
+    Generate a random instance of L2-regularized Poisson regression problem
+            minimize_{x \in B}  D_KL(b, Ax)
+    where
+        A:  m by n nonnegative matrix
+        b:  nonnegative vector of length m
+        noise:  noise level to generate b = A * x + noise
+        lambda: L2 regularization weight
+        normalizeA: whether to normalize columns of A
+
+    Return f, h, L, x0:
+        f: f(x) = D_KL(b, Ax)
+        h: Burg entropy with L2 ball projection
+        L: L = ||b||_2
+        x0: initial point is center of simplex
+    """
+
+    if randseed > 0:
+        np.random.seed(randseed)
+    A = np.random.rand(m, n)
+    if normalizeA:
+        A = A / A.sum(axis=0)  # scaling to make column sums equal to 1
+    x = np.random.rand(n) / n
+    xavg = x.sum() / x.size
+    x = np.maximum(x - xavg, 0) * 10
+    b = np.dot(A, x) + noise * (np.random.rand(m) - 0.5)
+    assert b.min() > 0, "need b > 0 for nonnegative regression."
+
+    f = PoissonRegression(A, b)
+    h = BurgEntropyL2Ball(lamda, radius=radius)
+    L = b.sum()
+    # Initial point should be far from 0 in order for ARDA to work well!
+    x0 = (1.0 / n) * np.ones(n)
+
+    return f, h, L, x0
+
+
 def KL_nonneg_regr(m, n, noise=0.01, lamdaL1=0, randseed=-1, normalizeA=True):
     """
     Generate a random instance of L1-regularized KL regression problem
