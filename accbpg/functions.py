@@ -290,7 +290,7 @@ class BurgEntropyL2(BurgEntropy):
         """
         Return argmin_{x > 0} { (lamda/2) * ||x||_2^2 + <g, x> + L * h(x) }
 
-        Тут так же как и в потомке возвращается градиент функции выше
+        Тут так же как и в потомке возвращается argmin функции выше
         """
         assert L > 0, "BurgEntropyL2: prox_map only takes positive L value."
         gg = g / L
@@ -342,23 +342,25 @@ class BurgEntropyL2Ball(BurgEntropy):
 
     def div_prox_map(self, y, g, L):
         """
-        Return argmin_{x in ||B||_2, x > 0} { <g, x> + L * D(x,y) }
+        Return argmin_{x in ||B||_inf, x > 0} { <g, x> + L * D(x,y) }
         B are with center in 0 + radius due to Burg entropy positiveness
 
         0 < x <= 2*radius
         """
         assert y.shape == g.shape, "Vectors y and g are of different sizes."
         assert L > 0, "L is not positive."
-        is_center = True
-        x = self.prox_map(g - L*self.gradient(y), L)
-        if is_center:
-            ball_center = np.zeros(y.shape) + self.radius + 1e-9
-        else:
-            ball_center = 0
-            x[x <= 0] = 1e-9
+        shift_center = True
+        x = self.prox_map(g - L * self.gradient(y), L)
+        if shift_center:
+            x -= self.radius
 
-        return ((self.radius*(x - ball_center)) /
-                (max(self.radius, np.linalg.norm(x - ball_center))) + ball_center)
+        x = np.clip(x, -self.radius, self.radius)
+
+        if shift_center:
+            x += self.radius
+
+        x[x <= 0] = 1e-9
+        return x
 
 
 class ShannonEntropy(LegendreFunction):

@@ -2,7 +2,7 @@ import numpy as np
 import time
 
 
-def lmo_positive_ball(radius, is_shifted_pos_ball=False):
+def lmo_notnegative_ball(radius, is_shifted_pos_ball=False):
     """
     The Frank-Wolfe lmo function for the l2 ball on x > 0 and x \in ||radius||_2
         is_shifted_pos_ball: Ball moves to the positive quartile
@@ -10,14 +10,14 @@ def lmo_positive_ball(radius, is_shifted_pos_ball=False):
 
     def f(g):
         if is_shifted_pos_ball:
-            center = radius + 1e-9
+            center = radius
         else:
             center = 0
-        s = -radius * np.sign(g - center)
-        if is_shifted_pos_ball:
-            s += center
-
-        s[s < 0] = 1e-12
+        s = np.zeros(g.shape)
+        argmin = np.argmin(g)
+        s[argmin] = radius*(-1*np.sign(g[argmin]))
+        s += center
+        s += 1e-60
         return s
 
     return lambda g: f(g)
@@ -42,10 +42,13 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
         s_k = lmo(g)
         d_k = s_k - x
         div = h.divergence(s_k, x)
-        grad_d_prod = np.dot(g, d_k)
-
         if div == 0:
-            div = 1e-14
+            div = 1e-60
+
+        grad_d_prod = np.dot(g, d_k)
+        if 0 < grad_d_prod <= 1e-18:
+            grad_d_prod = 0
+        assert grad_d_prod <= 0, "np.dot(g, d_k) must be negative."
 
         L = L / ls_ratio
         while True:

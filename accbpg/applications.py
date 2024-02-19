@@ -2,9 +2,8 @@
 # Licensed under the MIT License.
 
 
-import numpy as np
 from .functions import *
-from .utils import load_libsvm_file
+from .utils import load_libsvm_file, random_point_in_l2_ball
 
 
 def D_opt_libsvm(filename):
@@ -201,6 +200,31 @@ def Poisson_regrL2_ball(m, n, radius=1, noise=0.01, lamda=0, randseed=-1, normal
     x0 = (1.0 / n) * np.ones(n)
 
     return f, h, L, x0
+
+
+def Poisson_regr_diff_divs(m, n, radius=1, center=None, noise=0.01, lamda=0, randseed=-1, normalizeA=True):
+    if center is None:
+        center = np.array([radius] * n)
+
+    if randseed > 0:
+        np.random.seed(randseed)
+    A = np.random.rand(m, n) * (radius / 2)
+    if normalizeA:
+        A = A / A.sum(axis=0)  # scaling to make column sums equal to 1
+    x = random_point_in_l2_ball(center=center, radius=radius)
+    xavg = x.sum() / x.size
+    x = np.maximum(x - xavg, 0) + center
+    assert np.linalg.norm(x - center) <= radius
+    b = np.dot(A, x) + noise * (np.random.rand(m) - 0.5)
+    assert b.min() > 0, "need b > 0 for nonnegative regression."
+
+    f = PoissonRegression(A, b)
+    [burg_h, sqL2_h, shannon] = BurgEntropy(), SquaredL2Norm(), ShannonEntropy()
+    L = b.sum()
+    x0 = random_point_in_l2_ball(center, radius)
+    assert np.linalg.norm(x0 - center) <= radius
+
+    return f, [burg_h, sqL2_h, shannon], L, x0, x
 
 
 def KL_nonneg_regr(m, n, noise=0.01, lamdaL1=0, randseed=-1, normalizeA=True):

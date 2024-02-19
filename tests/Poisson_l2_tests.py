@@ -8,19 +8,19 @@ def poisson_regr_in_l2_ball():
     N = 5000
     m = 100
     n = 1000
-    radius = 100
+    radius = 10
     f, h, L, x0 = accbpg.Poisson_regrL2_ball(m, n, radius=radius, noise=0.001, lamda=0.001, randseed=1)
 
     # Solve the problem using BPG w/o line seach and adaptive ABPG with gamma=2 (TSE)
-    x00_1, F00_1, G00_1, T00_1 = accbpg.FW_alg_div_step(f, h, L, x0, lmo=accbpg.lmo_positive_ball(radius, is_shifted_pos_ball=True), maxitrs=N, gamma=2.0,
-                                                                  ls_ratio=1.5, verbskip=1)
-    x00_, F00_, G00_, T00_ = accbpg.BPG(f, h, L, x0, maxitrs=N, linesearch=False, verbskip=1)
-    xLS_, FLS_, GLS_, TLS_ = accbpg.BPG(f, h, L, x0, maxitrs=N, linesearch=True, ls_ratio=1.5, verbskip=1)
-    x20_, F20_, G20_, T20_ = accbpg.ABPG(f, h, L, x0, gamma=2.0, maxitrs=N, theta_eq=False, verbskip=1)
+    x00_1, F00_1, G00_1, T00_1 = accbpg.FW_alg_div_step(f, h, L, x0, lmo=accbpg.lmo_notnegative_ball(radius, is_shifted_pos_ball=True), maxitrs=N, gamma=2.0,
+                                                        ls_ratio=1.5, verbskip=1000)
+    x00_, F00_, G00_, T00_ = accbpg.BPG(f, h, L, x0, maxitrs=N, linesearch=False, verbskip=1000)
+    xLS_, FLS_, GLS_, TLS_ = accbpg.BPG(f, h, L, x0, maxitrs=N, linesearch=True, ls_ratio=1.5, verbskip=1000)
+    x20_, F20_, G20_, T20_ = accbpg.ABPG(f, h, L, x0, gamma=2.0, maxitrs=N, theta_eq=False, verbskip=1000)
     x2e_, F2e_, _, G2e_, T2e_ = accbpg.ABPG_expo(f, h, L, x0, gamma0=3, maxitrs=N, theta_eq=False, Gmargin=1,
-                                                 verbskip=1)
+                                                 verbskip=1000)
     x2g_, F2g_, G2g_, _, _, _ = accbpg.ABPG_gain(f, h, L, x0, gamma=2, maxitrs=N, G0=0.1, ls_inc=1.5,
-                                                 ls_dec=1.5, theta_eq=True, verbskip=1)
+                                                 ls_dec=1.5, theta_eq=True, verbskip=1000)
 
     fig, _ = plt.subplots(1, 2, figsize=(11, 4))
 
@@ -28,7 +28,7 @@ def poisson_regr_in_l2_ball():
     styles = ['k:', 'g-', 'b-.', 'k-', 'r--', 'y-']
     dashes = [[1, 2], [], [4, 2, 1, 2], [], [4, 2], []]
 
-    does_print_plots = True
+    does_print_plots = False
     if does_print_plots:
         ax1 = plt.subplot(1, 2, 1)
         y_vals = [F00_, FLS_, F20_, F2e_, F2g_, F00_1]

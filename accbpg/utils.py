@@ -153,3 +153,16 @@ def load_sido(filename):
     X = sparse.csr_matrix((data, indices, indptr), shape)
 
     return X, y
+
+def random_point_in_l2_ball(center, radius):
+    # Generate a random point on the unit sphere
+    ndim = len(center)
+    random_direction = np.random.randn(ndim)
+    random_direction /= np.linalg.norm(random_direction)
+
+    # Generate a random radius within the given ball's radius
+    random_radius = np.random.uniform(0, radius)
+
+    # Scale the random point by the random radius
+    random_point = center + random_radius * random_direction
+    return random_point
