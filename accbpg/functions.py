@@ -576,4 +576,42 @@ class L2L1Linf(LegendreFunction):
         """
         assert y.shape == g.shape and L > 0, "Vectors y and g not same shape."
         return self.prox_map(g - L*y, L)
-        
+
+#######################################################################
+
+
+def lmo_notnegative_ball(radius, is_shifted_pos_ball=False):
+    """
+    The Frank-Wolfe lmo function for the l2 ball on x > 0 and x \in ||radius||_2
+        is_shifted_pos_ball: Ball moves to the positive quartile
+    """
+
+    def f(g):
+        if is_shifted_pos_ball:
+            center = radius
+        else:
+            center = 0
+        s = np.zeros(g.shape)
+        argmin = np.argmin(g)
+        s[argmin] = radius * (-1 * np.sign(g[argmin]))
+        s += center
+        s += 1e-60
+        return s
+
+    return lambda g: f(g)
+
+
+def lmo_simplex(radius=1):
+    """
+    The Frank-Wolfe lmo function for the l2 ball on x > 0 and x \in ||radius||_2
+        is_shifted_pos_ball: Ball moves to the positive quartile
+    """
+
+    def f(g):
+        s = np.zeros(g.shape)
+        s += 1e-60
+        s[np.argmin(g)] = radius  # see LMO for simplex e.g.: https://arxiv.org/abs/2106.10261v1
+
+        return s
+
+    return lambda g: f(g)
