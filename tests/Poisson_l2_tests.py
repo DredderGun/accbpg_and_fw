@@ -12,7 +12,7 @@ def poisson_regr_in_l2_ball():
     f, h, L, x0 = accbpg.Poisson_regrL2_ball(m, n, radius=radius, noise=0.001, lamda=0.001, randseed=1)
 
     # Solve the problem using BPG w/o line seach and adaptive ABPG with gamma=2 (TSE)
-    x00_1, F00_1, G00_1, T00_1 = accbpg.FW_alg_div_step(f, h, L, x0, lmo=accbpg.lmo_notnegative_ball(radius, is_shifted_pos_ball=True), maxitrs=N, gamma=2.0,
+    x00_1, F00_1, G00_1, T00_1 = accbpg.FW_alg_div_step(f, h, L, x0, lmo=accbpg.lmo_notnegative_ball(radius, center=radius), maxitrs=N, gamma=2.0,
                                                         ls_ratio=1.5, verbskip=1000)
     x00_, F00_, G00_, T00_ = accbpg.BPG(f, h, L, x0, maxitrs=N, linesearch=False, verbskip=1000)
     xLS_, FLS_, GLS_, TLS_ = accbpg.BPG(f, h, L, x0, maxitrs=N, linesearch=True, ls_ratio=1.5, verbskip=1000)
@@ -28,18 +28,18 @@ def poisson_regr_in_l2_ball():
     styles = ['k:', 'g-', 'b-.', 'k-', 'r--', 'y-']
     dashes = [[1, 2], [], [4, 2, 1, 2], [], [4, 2], []]
 
-    does_print_plots = False
+    does_print_plots = True
     if does_print_plots:
         ax1 = plt.subplot(1, 2, 1)
         y_vals = [F00_, FLS_, F20_, F2e_, F2g_, F00_1]
-        accbpg.plot_comparisons(ax1, y_vals, labels, x_vals=[], plotdiff=True, yscale="log", xlim=[-20, 2000],
+        accbpg.plot_comparisons(ax1, y_vals, labels, x_vals=[], plotdiff=True, yscale="log", xlim=[-20, 200],
                                 ylim=[1e-6, 1e-1],
                                 xlabel=r"Iteration number $k$", ylabel=r"$F(x_k)$", legendloc="upper right",
                                 linestyles=styles, linedash=dashes)
 
         ax2 = plt.subplot(1, 2, 2)
         y_vals = [GLS_, G20_, G2e_, G2g_, G00_1]
-        accbpg.plot_comparisons(ax2, y_vals, labels[1:], x_vals=[], plotdiff=False, yscale="log", xlim=[-20, 2000],
+        accbpg.plot_comparisons(ax2, y_vals, labels[1:], x_vals=[], plotdiff=False, yscale="log", xlim=[-20, 200],
                                 ylim=[1e-4, 1e3],
                                 xlabel=r"Iteration number $k$", ylabel=r'$\hat{G}_k$', legendloc="center right",
                                 linestyles=styles[1:], linedash=dashes[1:])

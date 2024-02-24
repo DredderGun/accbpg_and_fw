@@ -48,7 +48,7 @@ def BPG(f, h, L, x0, maxitrs, epsilon=1e-14, linesearch=True, ls_ratio=1.2,
         if linesearch:
             L = L / ls_ratio
             x1 = h.div_prox_map(x, g, L)
-            while f(x1) > fx + np.dot(g, x1-x) + L*h.divergence(x1, x):
+            while f(x1) > fx + np.dot(g, x1-x) + L*h.divergence(x1, x) and h.divergence(x1, x) > 0:
                 L = L * ls_ratio
                 x1 = h.div_prox_map(x, g, L)
             x = x1
@@ -540,6 +540,7 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
     F = np.zeros(maxitrs)
     Ls = np.ones(maxitrs) * L
     T = np.zeros(maxitrs)
+    delta = 1e-20
 
     x = np.copy(x0)
     for k in range(maxitrs):
@@ -550,10 +551,10 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
         d_k = s_k - x
         div = h.divergence(s_k, x)
         if div == 0:
-            div = 1e-60
+            div = delta
 
         grad_d_prod = np.dot(g, d_k)
-        if 0 < grad_d_prod <= 1e-18:
+        if 0 < grad_d_prod <= delta:
             grad_d_prod = 0
         assert grad_d_prod <= 0, "np.dot(g, d_k) must be negative."
 
@@ -567,6 +568,7 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
                 break
             L = L * ls_ratio
         x = x1
+        x[x == 0] = delta
 
         Ls[k] = L
         if verbose and k % verbskip == 0:

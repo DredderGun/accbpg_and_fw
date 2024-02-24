@@ -156,7 +156,43 @@ class KLdivRegression(RSmoothFunction):
         fx = sum( Ax * np.log(Ax / self.b) - Ax + self.b )
         return fx, g
            
-           
+
+class SoftMarginLoss(RSmoothFunction):
+    def __init__(self, lamda, A, y):
+        self.lamda = lamda
+        self.A = A
+        self.y = y
+
+    def __call__(self, x):
+        return self.F(x)
+
+    def hinge_loss(self, x):
+        return np.mean(np.maximum(0, 1 - self.y * np.dot(self.A, x)))
+
+    def F(self, x):
+        # return self.hinge_loss(x)
+        return self.hinge_loss(x) + self.lamda * np.dot(x, x)
+
+    def gradient(self, x):
+        return self.func_grad(x, flag=1)
+
+    def subgradient_loss(self, x):
+        indicator = (1 - self.y * np.dot(self.A, x) < 1).astype(int)
+        return np.mean(np.multiply(indicator[:, np.newaxis], np.multiply(self.y[:, np.newaxis], self.A)), axis=0)
+
+    def func_grad(self, x, flag=2):
+
+        if flag == 0:
+            fx = self.F(x)
+            return fx
+
+        g = self.lamda * x - self.subgradient_loss(x)
+        if flag == 1:
+            return g
+
+        fx = self.F(x)
+        return fx, g
+
 #######################################################################
 
 
@@ -335,10 +371,12 @@ class BurgEntropyL2Ball(BurgEntropy):
             min_{x in ||B||_2} f(x)
     The ball must lie on the positive side of the axes! (x > 0)
     """
-    def __init__(self, lamda=0, radius=1):
+    def __init__(self, lamda=0, radius=1, center=None, delta=1e-30):
         assert lamda >= 0, "BurgEntropyL2Projection: lamda should be nonnegative."
         self.lamda = lamda
         self.radius = radius
+        self.center = center
+        self.delta = delta
 
     def div_prox_map(self, y, g, L):
         """
@@ -349,17 +387,20 @@ class BurgEntropyL2Ball(BurgEntropy):
         """
         assert y.shape == g.shape, "Vectors y and g are of different sizes."
         assert L > 0, "L is not positive."
-        shift_center = True
-        x = self.prox_map(g - L * self.gradient(y), L)
-        if shift_center:
-            x -= self.radius
+        x = L / (g - L * self.gradient(y))
+        if self.center is None:
+            center = np.zeros(x.shape)
+        else:
+            center = np.array([self.center] * x.shape[0])
 
-        x = np.clip(x, -self.radius, self.radius)
+        x -= center
+        x /= max(self.radius, np.linalg.norm(x))
+        x *= self.radius
+        x += center
+        x[x == 0] = self.delta
 
-        if shift_center:
-            x += self.radius
+        assert np.linalg.norm(x - center) - self.radius <= 1e-12
 
-        x[x <= 0] = 1e-9
         return x
 
 
@@ -580,22 +621,22 @@ class L2L1Linf(LegendreFunction):
 #######################################################################
 
 
-def lmo_notnegative_ball(radius, is_shifted_pos_ball=False):
+def lmo_notnegative_ball(radius, center=None):
     """
     The Frank-Wolfe lmo function for the l2 ball on x > 0 and x \in ||radius||_2
         is_shifted_pos_ball: Ball moves to the positive quartile
     """
 
     def f(g):
-        if is_shifted_pos_ball:
-            center = radius
+        if center is None:
+            center_p = np.zeros(g)
         else:
-            center = 0
-        s = np.zeros(g.shape)
-        argmin = np.argmin(g)
-        s[argmin] = radius * (-1 * np.sign(g[argmin]))
-        s += center
-        s += 1e-60
+            center_p = np.array([center] * g.shape[0])
+        g_local = g.copy()
+        g_local -= center_p
+        s = -1*g*radius/np.linalg.norm(g)
+        s += center_p
+        s[s == 0] = 1e-20
         return s
 
     return lambda g: f(g)
@@ -603,8 +644,7 @@ def lmo_notnegative_ball(radius, is_shifted_pos_ball=False):
 
 def lmo_simplex(radius=1):
     """
-    The Frank-Wolfe lmo function for the l2 ball on x > 0 and x \in ||radius||_2
-        is_shifted_pos_ball: Ball moves to the positive quartile
+    The Frank-Wolfe lmo function for the simplex
     """
 
     def f(g):

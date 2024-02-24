@@ -5,6 +5,11 @@
 from .functions import *
 from .utils import load_libsvm_file, random_point_in_l2_ball
 
+from sklearn.datasets import load_iris
+from sklearn.decomposition import PCA
+from sklearn.model_selection import train_test_split
+
+import pandas as pd
 
 def D_opt_libsvm(filename):
     """
@@ -260,3 +265,45 @@ def KL_nonneg_regr(m, n, noise=0.01, lamdaL1=0, randseed=-1, normalizeA=True):
     #x0 = (1.0/n)*np.ones(n)
 
     return f, h, L, x0
+
+
+def svm_alg_iris_ds(radius=1, center=None):
+    iris = load_iris()
+    X = iris.data
+    Y = iris.target
+    Y = (Y > 0).astype(int) * 2 - 1  # [0,1,2] --> [False,True,True] --> [0,1,1] --> [0,2,2] --> [-1,1,1]
+
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.1, random_state=2024)
+
+    f = SoftMarginLoss(0.5, X_train, Y_train)
+
+    if center is None:
+        center = np.array([radius + 1] * X_train.shape[1])
+
+    h = BurgEntropyL2Ball(lamda=0.5, radius=radius, center=radius + 1)
+    L = max(X_train.sum(axis=0))
+    x0 = random_point_in_l2_ball(center, radius)
+    assert np.linalg.norm(x0 - center) <= radius
+
+    return f, h, L, x0
+
+def svm_alg_banknote(radius=1, center=None):
+    X = pd.read_csv('https://archive.ics.uci.edu/ml/machine-learning-databases/00267/data_banknote_authentication.txt')
+    Y = X['0'].to_numpy()
+    X = X.to_numpy()
+
+    f = SoftMarginLoss(0.5, X, Y)
+
+    if center is None:
+        center = np.array([radius + 1] * X.shape[1])
+
+    h = BurgEntropyL2Ball(lamda=0.5, radius=radius, center=radius + 1)
+    L = max(X.sum(axis=0))
+    x0 = random_point_in_l2_ball(center, radius)
+    assert np.linalg.norm(x0 - center) <= radius
+
+    return f, h, L, x0
+
+
+if __name__ == "__main__":
+    pass
