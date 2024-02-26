@@ -540,6 +540,7 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
     F = np.zeros(maxitrs)
     Ls = np.ones(maxitrs) * L
     T = np.zeros(maxitrs)
+    alphas = np.zeros(maxitrs)
     delta = 1e-20
 
     x = np.copy(x0)
@@ -570,6 +571,8 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
         x = x1
         x[x == 0] = delta
 
+        alphas[k] = alpha_k
+
         Ls[k] = L
         if verbose and k % verbskip == 0:
             print("{0:6d}  {1:10.3e}  {2:10.3e}  {3:6.1f}".format(k, F[k], L, T[k]))
@@ -581,4 +584,4 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
     F = F[0:k + 1]
     Ls = Ls[0:k + 1]
     T = T[0:k + 1]
-    return x, F, Ls, T
+    return x, F, Ls, T, alphas

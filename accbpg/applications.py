@@ -8,6 +8,7 @@ from .utils import load_libsvm_file, random_point_in_l2_ball
 from sklearn.datasets import load_iris
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
+from sklearn.datasets import load_digits
 
 import pandas as pd
 
@@ -267,7 +268,7 @@ def KL_nonneg_regr(m, n, noise=0.01, lamdaL1=0, randseed=-1, normalizeA=True):
     return f, h, L, x0
 
 
-def svm_alg_iris_ds(radius=1, center=None):
+def svm_alg_iris_ds(radius=1, center=None, lamda=0.5):
     iris = load_iris()
     X = iris.data
     Y = iris.target
@@ -278,31 +279,114 @@ def svm_alg_iris_ds(radius=1, center=None):
     f = SoftMarginLoss(0.5, X_train, Y_train)
 
     if center is None:
-        center = np.array([radius + 1] * X_train.shape[1])
+        center = np.array([radius] * X_train.shape[1])
 
-    h = BurgEntropyL2Ball(lamda=0.5, radius=radius, center=radius + 1)
+    h = BurgEntropyL2Ball(lamda=lamda, radius=radius, center=radius)
     L = max(X_train.sum(axis=0))
     x0 = random_point_in_l2_ball(center, radius)
     assert np.linalg.norm(x0 - center) <= radius
 
     return f, h, L, x0
 
-def svm_alg_banknote(radius=1, center=None):
+def svm_alg_banknote_ds(center=None, lamda=0.5):
     X = pd.read_csv('https://archive.ics.uci.edu/ml/machine-learning-databases/00267/data_banknote_authentication.txt')
+
+    def generate_random(last_column_value):
+        if last_column_value == 0:
+            return np.random.randint(1, 11)
+        else:
+            return np.random.randint(90, 101)
+
+    # Adding 100 new columns to the dataframe
+    for i in range(100):
+        X[4+i] = X['0'].apply(generate_random)
+
     Y = X['0'].to_numpy()
     X = X.to_numpy()
 
-    f = SoftMarginLoss(0.5, X, Y)
+    f = SoftMarginLoss(lamda, X, Y)
 
+    n = X.shape[1]
+    radius = min(n ** -1 * lamda ** -1 * np.sum(np.linalg.norm(X[:, :-1], axis=1)), (2 / lamda) ** 0.5)
     if center is None:
-        center = np.array([radius + 1] * X.shape[1])
+        center = np.array([radius] * n)
 
-    h = BurgEntropyL2Ball(lamda=0.5, radius=radius, center=radius + 1)
+    h = BurgEntropyL2Ball(lamda=lamda, radius=radius, center=radius)
     L = max(X.sum(axis=0))
     x0 = random_point_in_l2_ball(center, radius)
     assert np.linalg.norm(x0 - center) <= radius
 
-    return f, h, L, x0
+    return f, h, L, x0, radius
+
+
+def svm_alg_banknote_ds(center=None, lamda=0.5):
+    X = pd.read_csv('https://archive.ics.uci.edu/ml/machine-learning-databases/00267/data_banknote_authentication.txt')
+
+    def generate_random(last_column_value):
+        if last_column_value == 0:
+            return np.random.randint(1, 11)
+        else:
+            return np.random.randint(90, 101)
+
+    # Adding 100 new columns to the dataframe
+    for i in range(100):
+        X[4+i] = X['0'].apply(generate_random)
+
+    Y = X['0'].to_numpy()
+    X = X.to_numpy()
+
+    f = SoftMarginLoss(lamda, X, Y)
+
+    n = X.shape[1]
+    radius = min(n ** -1 * lamda ** -1 * np.sum(np.linalg.norm(X[:, :-1], axis=1)), (2 / lamda) ** 0.5)
+    if center is None:
+        center = np.array([radius] * n)
+
+    h = BurgEntropyL2Ball(lamda=lamda, radius=radius, center=radius)
+    L = max(X.sum(axis=0))
+    x0 = random_point_in_l2_ball(center, radius)
+    assert np.linalg.norm(x0 - center) <= radius
+
+    return f, h, L, x0, radius
+
+def smv_random_ds(center = None, lamda = 0.5):
+    X = np.concatenate((-10 * np.random.random_sample((1000, 150)),
+                        1000 * np.random.random_sample((1000, 150))), axis=0)
+    Y = np.concatenate((np.ones(1000) * -1, np.ones(1000)))
+    X[:, -1] = Y
+
+    f = SoftMarginLoss(lamda, X, Y)
+
+    n = X.shape[1]
+    radius = min(n ** -1 * lamda ** -1 * np.sum(np.linalg.norm(X[:, :-1], axis=1)), (2 / lamda) ** 0.5)
+    if center is None:
+        center = np.array([radius] * n)
+
+    h = BurgEntropyL2Ball(lamda=lamda, radius=radius, center=radius)
+    L = max(X.sum(axis=0))
+    x0 = random_point_in_l2_ball(center, radius)
+    assert np.linalg.norm(x0 - center) <= radius
+
+    return f, h, L, x0, radius
+
+
+def smv_digits_ds(center=None, lamda=0.5):
+    X, Y = load_digits(n_class=2, return_X_y=True)
+    Y = (Y > 0).astype(int) * 2 - 1  # [0,1,2] --> [False,True,True] --> [0,1,1] --> [0,2,2] --> [-1,1,1]
+
+    f = SoftMarginLoss(lamda, X, Y)
+
+    n = X.shape[1]
+    radius = min(n ** -1 * lamda ** -1 * np.sum(np.linalg.norm(X[:, :-1], axis=1)), (2 / lamda) ** 0.5)
+    if center is None:
+        center = np.zeros(n)
+
+    h = PolyDivBall(X, lamda=lamda, B=radius)
+    L = max(X.sum(axis=0))
+    x0 = random_point_in_l2_ball(center, radius)
+    assert np.linalg.norm(x0 - center) <= radius
+
+    return f, h, L, x0, radius
 
 
 if __name__ == "__main__":

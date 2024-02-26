@@ -170,14 +170,13 @@ class SoftMarginLoss(RSmoothFunction):
         return np.mean(np.maximum(0, 1 - self.y * np.dot(self.A, x)))
 
     def F(self, x):
-        # return self.hinge_loss(x)
-        return self.hinge_loss(x) + self.lamda * np.dot(x, x)
+        return self.hinge_loss(x) + self.lamda/2 * np.dot(x, x)
 
     def gradient(self, x):
         return self.func_grad(x, flag=1)
 
     def subgradient_loss(self, x):
-        indicator = (1 - self.y * np.dot(self.A, x) < 1).astype(int)
+        indicator = (self.y * np.dot(self.A, x) < 1).astype(int)
         return np.mean(np.multiply(indicator[:, np.newaxis], np.multiply(self.y[:, np.newaxis], self.A)), axis=0)
 
     def func_grad(self, x, flag=2):
@@ -618,10 +617,70 @@ class L2L1Linf(LegendreFunction):
         assert y.shape == g.shape and L > 0, "Vectors y and g not same shape."
         return self.prox_map(g - L*y, L)
 
+
+class PolyDivBall(LegendreFunction):
+    """
+    Div from https://arxiv.org/pdf/1710.04718.pdf (27) with constraint on l2 ball
+    """
+
+    def __init__(self, DS, lamda=0, B=1):
+        self.lamda = lamda
+        self.DS = DS
+        self.B = B
+
+        self.DS_mean = np.mean(np.linalg.norm(DS, axis=1))
+        self.DS_mean_quad = np.mean(np.linalg.norm(DS, axis=1) ** 2)
+
+    def __call__(self, A, x):
+        """
+        https://arxiv.org/pdf/1710.04718.pdf (27)
+        """
+        h0 = 1/2 * np.linalg.norm(x)**2
+        h1 = 1/3 * np.linalg.norm(x)**3
+        h2 = 1/4 * np.linalg.norm(x)**4
+
+        return self.lamda**2*h2 + 2*self.lamda*self.DS_mean*h1 + self.DS_mean_quad*h0
+
+    def extra_Psi(self, x):
+        return 0
+
+    def gradient(self, x):
+        """
+        gradient of h(x) = (1/2)||x||_2^2
+        """
+        return x
+
+    def divergence(self, x, y):
+        """
+        Bregman divergence D(x, y) = h(x) - h(y) - \nabla h(y) (x - y)
+        """
+        assert x.shape == y.shape, "PolyDivBall: x and y not same shape."
+        xy_d = np.linalg.norm(x - y) ** 2
+        xy_s = np.linalg.norm(x + y) ** 2
+        x_norm = np.linalg.norm(x)
+        y_norm = np.linalg.norm(x)
+
+        return xy_d * (self.lamda**2 / 3 * x_norm + 2/3 * self.lamda**2*y_norm + self.lamda/2*self.DS_mean*xy_s + self.lamda*self.DS_mean*y_norm**2 + self.DS_mean_quad/2)
+
+
+    def prox_map(self, g, L):
+        """
+        Return argmin_{x in C} { Psi(x) + <g, x> + L * h(x) }
+        """
+        assert False, "Not implemented yet"
+        # assert L > 0, "L2L1Linf: L should be positive."
+
+
+    def div_prox_map(self, y, g, L):
+        """
+        Return argmin_{x in C} { Psi(x) + <g, x> + L * D(x,y)  }
+        """
+        assert False, "Not implemented yet"
+
 #######################################################################
 
 
-def lmo_notnegative_ball(radius, center=None):
+def lmo_l2_ball(radius, center=None):
     """
     The Frank-Wolfe lmo function for the l2 ball on x > 0 and x \in ||radius||_2
         is_shifted_pos_ball: Ball moves to the positive quartile
@@ -629,7 +688,7 @@ def lmo_notnegative_ball(radius, center=None):
 
     def f(g):
         if center is None:
-            center_p = np.zeros(g)
+            center_p = np.zeros(g.shape[0])
         else:
             center_p = np.array([center] * g.shape[0])
         g_local = g.copy()

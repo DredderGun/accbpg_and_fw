@@ -12,7 +12,7 @@ def poisson_regr_in_l2_ball():
     f, h, L, x0 = accbpg.Poisson_regrL2_ball(m, n, radius=radius, noise=0.001, lamda=0.001, randseed=1)
 
     # Solve the problem using BPG w/o line seach and adaptive ABPG with gamma=2 (TSE)
-    x00_1, F00_1, G00_1, T00_1 = accbpg.FW_alg_div_step(f, h, L, x0, lmo=accbpg.lmo_notnegative_ball(radius, center=radius), maxitrs=N, gamma=2.0,
+    x00_1, F00_1, G00_1, T00_1 = accbpg.FW_alg_div_step(f, h, L, x0, lmo=accbpg.lmo_l2_ball(radius, center=radius), maxitrs=N, gamma=2.0,
                                                         ls_ratio=1.5, verbskip=1000)
     x00_, F00_, G00_, T00_ = accbpg.BPG(f, h, L, x0, maxitrs=N, linesearch=False, verbskip=1000)
     xLS_, FLS_, GLS_, TLS_ = accbpg.BPG(f, h, L, x0, maxitrs=N, linesearch=True, ls_ratio=1.5, verbskip=1000)
