@@ -618,7 +618,7 @@ class L2L1Linf(LegendreFunction):
         return self.prox_map(g - L*y, L)
 
 
-class PolyDivBall(LegendreFunction):
+class PolyDiv(LegendreFunction):
     """
     Div from https://arxiv.org/pdf/1710.04718.pdf (27) with constraint on l2 ball
     """
@@ -631,36 +631,39 @@ class PolyDivBall(LegendreFunction):
         self.DS_mean = np.mean(np.linalg.norm(DS, axis=1))
         self.DS_mean_quad = np.mean(np.linalg.norm(DS, axis=1) ** 2)
 
-    def __call__(self, A, x):
+    def __call__(self, x):
         """
         https://arxiv.org/pdf/1710.04718.pdf (27)
         """
-        h0 = 1/2 * np.linalg.norm(x)**2
-        h1 = 1/3 * np.linalg.norm(x)**3
-        h2 = 1/4 * np.linalg.norm(x)**4
+        return self.h(x)
 
-        return self.lamda**2*h2 + 2*self.lamda*self.DS_mean*h1 + self.DS_mean_quad*h0
+    def h(self, x):
+        norm4 = 1/4 * np.linalg.norm(x)**4
+        norm3 = 1/3 * np.linalg.norm(x)**3
+        norm2 = 1/2 * np.linalg.norm(x)**2
+
+        return self.lamda**2 * norm4 + 2*self.lamda*self.DS_mean*norm3 + self.DS_mean_quad*norm2
 
     def extra_Psi(self, x):
         return 0
 
     def gradient(self, x):
         """
-        gradient of h(x) = (1/2)||x||_2^2
+        gradient of h(x)
         """
-        return x
+        return (self.lamda**2 * np.linalg.norm(x)**2 + 2*self.lamda*self.DS_mean * np.linalg.norm(x) + self.DS_mean_quad) * x
 
     def divergence(self, x, y):
         """
         Bregman divergence D(x, y) = h(x) - h(y) - \nabla h(y) (x - y)
         """
         assert x.shape == y.shape, "PolyDivBall: x and y not same shape."
-        xy_d = np.linalg.norm(x - y) ** 2
-        xy_s = np.linalg.norm(x + y) ** 2
-        x_norm = np.linalg.norm(x)
-        y_norm = np.linalg.norm(x)
+        # xy_d = np.linalg.norm(x - y) ** 2
+        # xy_s = np.linalg.norm(x + y) ** 2
+        # x_norm = np.linalg.norm(x)
+        # y_norm = np.linalg.norm(x)
 
-        return xy_d * (self.lamda**2 / 3 * x_norm + 2/3 * self.lamda**2*y_norm + self.lamda/2*self.DS_mean*xy_s + self.lamda*self.DS_mean*y_norm**2 + self.DS_mean_quad/2)
+        return self.h(x) - self.h(y) - np.dot(self.gradient(y), x - y)
 
 
     def prox_map(self, g, L):
@@ -693,10 +696,28 @@ def lmo_l2_ball(radius, center=None):
             center_p = np.array([center] * g.shape[0])
         g_local = g.copy()
         g_local -= center_p
-        s = -1*g*radius/np.linalg.norm(g)
+        max_i = np.argmax(np.abs(g))
+        s = np.zeros(g.shape)
+        s[max_i] = np.sign(-1 * g[max_i])*radius
         s += center_p
         s[s == 0] = 1e-20
+
+        # so is that lmo incorrect?
+        # s = -1*np.sign(g_local)*np.abs(g_local)/np.linalg.norm(g_local)
+        # s *= radius
+
+        assert np.linalg.norm(s - center_p) - radius <= 1e-12
+
         return s
+
+    return lambda g: f(g)
+
+
+def lmo_linf_ball(radius, center=None):
+    assert center is None, "center are not implemented yet"
+
+    def f(g):
+        return np.ones(g.shape[0]) * radius * (-1) * np.sign(g)
 
     return lambda g: f(g)
 
@@ -709,7 +730,7 @@ def lmo_simplex(radius=1):
     def f(g):
         s = np.zeros(g.shape)
         s += 1e-60
-        s[np.argmin(g)] = radius  # see LMO for simplex e.g.: https://arxiv.org/abs/2106.10261v1
+        s[np.argmin(g)] = radius  # see LMO for simplex e.g.: https://arxiv.org/abs/2106.10261v1 page 9
 
         return s
 

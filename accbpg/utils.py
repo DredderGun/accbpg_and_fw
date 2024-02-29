@@ -2,6 +2,9 @@ import os.path
 import numpy as np
 import scipy.sparse as sparse
 
+from sklearn.datasets import load_digits
+import pandas as pd
+
 
 def _open_file(filename):
 
@@ -154,15 +157,67 @@ def load_sido(filename):
 
     return X, y
 
-def random_point_in_l2_ball(center, radius):
+def random_point_in_l2_ball(center, radius, pos_dir=False):
     # Generate a random point on the unit sphere
     ndim = len(center)
     random_direction = np.random.randn(ndim)
     random_direction /= np.linalg.norm(random_direction)
 
+    if pos_dir:
+        random_direction = np.sign(random_direction) * random_direction
+
     # Generate a random radius within the given ball's radius
-    random_radius = np.random.uniform(0, radius)
+    random_radius = np.random.uniform(radius*0.8, radius)
 
     # Scale the random point by the random radius
     random_point = center + random_radius * random_direction
+
+    assert np.linalg.norm(random_point - center) - radius <= 1e-15
+
     return random_point
+
+
+def generate_random_value_in_df(DF, conditions_ser, num_new_cols):
+    # Generate random DataFrame new_values
+    np.random.seed(0)  # for reproducibility
+
+    # Initialize B_values with the same shape as DF
+    new_values = np.random.randint(90, 101, size=(360, num_new_cols))
+
+    # Replace values based on condition
+    mask = conditions_ser.values == -1
+    indices_to_replace = np.where(mask)
+    num_values_to_replace = indices_to_replace[0].shape[0]
+
+    # Generate random values for elements with -1 in Y
+    replacement_values = np.random.randint(60, 80, size=(num_values_to_replace, num_new_cols))
+
+    # Replace corresponding values in B_values
+    new_values[indices_to_replace[0]] = replacement_values
+
+    # Create DataFrame B
+    new_columns = [f"pixel_{i}" for i in range(num_new_cols)]
+    df_to_add = pd.DataFrame(new_values, columns=new_columns)
+
+    # Concatenate new_df to the right side of DF
+    return pd.concat([DF.reset_index(drop=True), df_to_add], axis=1)
+
+
+def random_point_on_simplex(n, radius):
+    # Generate n random numbers
+    rand_nums = np.random.rand(n-1)
+
+    # Sort the random numbers
+    rand_nums.sort()
+
+    # Add 0 and radius at the beginning and end
+    rand_nums = np.concatenate([[0], rand_nums, [radius]])
+
+    # Calculate the differences between adjacent elements
+    diffs = np.diff(rand_nums)
+
+    return diffs
+
+
+if __name__ == "__main__":
+    pass

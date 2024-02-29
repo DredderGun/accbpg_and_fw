@@ -1,5 +1,6 @@
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
 
 matplotlib.rcParams.update({'font.size': 12, 'font.family': 'serif'})
 
@@ -10,14 +11,15 @@ def d_opt_design_tests():
     # Generate a random instance of the D-optimal design problem of size m by n
     m = 80
     n = 200
-    f, h, L, x0Kh = accbpg.D_opt_design(m, n)
-    x0KY = accbpg.D_opt_KYinit(f.H)
-    x0 = (1 - 1e-3) * x0KY + 1e-3 * x0Kh
+    f, h, L, x0 = accbpg.D_opt_libsvm('data/housing.txt')
+    # x0KY = accbpg.D_opt_KYinit(f.H)
+    # x0 = (1 - 1e-3) * x0KY + 1e-3 * x0Kh
+    # x0 = accbpg.random_point_on_simplex(n, 1)
 
     # Solve the problem using BPG and ABPG with different values of gamma (TSE)
     x00, F00, G00, T00 = accbpg.BPG(f, h, L, x0, maxitrs=1000, linesearch=True, ls_ratio=2, verbskip=100)
     x20, F20, G20, T20 = accbpg.ABPG(f, h, L, x0, gamma=2.0, maxitrs=1000, theta_eq=True, verbskip=100)
-    x00_fw, F00_fw, G00_fw, T00_fw = accbpg.FW_alg_div_step(f, h, L, x0, lmo=accbpg.lmo_simplex(),
+    x00_fw, F00_fw, G00_fw, T00_fw, alphas = accbpg.FW_alg_div_step(f, h, L, x0, lmo=accbpg.lmo_simplex(),
                                                             maxitrs=1000, gamma=2.0, ls_ratio=2, verbskip=100)
     x2e, F2e, Gamma2e, G2e, T2e = accbpg.ABPG_expo(f, h, L, x0, gamma0=3, maxitrs=5000, theta_eq=True, Gmargin=100,
                                                    verbskip=1000)

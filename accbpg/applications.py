@@ -3,10 +3,9 @@
 
 
 from .functions import *
-from .utils import load_libsvm_file, random_point_in_l2_ball
+from .utils import load_libsvm_file, generate_random_value_in_df, random_point_on_simplex, random_point_in_l2_ball
 
 from sklearn.datasets import load_iris
-from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 from sklearn.datasets import load_digits
 
@@ -193,44 +192,32 @@ def Poisson_regrL2_ball(m, n, radius=1, noise=0.01, lamda=0, randseed=-1, normal
     A = np.random.rand(m, n)
     if normalizeA:
         A = A / A.sum(axis=0)  # scaling to make column sums equal to 1
-    x = np.random.rand(n) / n
-    xavg = x.sum() / x.size
-    x = np.maximum(x - xavg, 0) * 10
+
+    # Case 1. Point are right on the edge of ball
+    x = np.zeros(n)
+    x += 1e-20
+    x[1] = radius
+
+    # Case 2. Point slightly out of the edge
+    # x = np.zeros(n)
+    # x += 1e-20 - radius/10
+    # x[1] = radius
+
+    # Case 3. Point somewhere
+    # x = random_point_in_l2_ball(np.ones(n)*radius, 100)
+
+    x += radius
+
     b = np.dot(A, x) + noise * (np.random.rand(m) - 0.5)
     assert b.min() > 0, "need b > 0 for nonnegative regression."
 
     f = PoissonRegression(A, b)
-    h = BurgEntropyL2Ball(lamda, radius=radius)
+    h = BurgEntropyL2Ball(lamda, radius=radius, center=radius)
     L = b.sum()
     # Initial point should be far from 0 in order for ARDA to work well!
-    x0 = (1.0 / n) * np.ones(n)
+    x0 = np.ones(n)*radius
 
-    return f, h, L, x0
-
-
-def Poisson_regr_diff_divs(m, n, radius=1, center=None, noise=0.01, lamda=0, randseed=-1, normalizeA=True):
-    if center is None:
-        center = np.array([radius] * n)
-
-    if randseed > 0:
-        np.random.seed(randseed)
-    A = np.random.rand(m, n) * (radius / 2)
-    if normalizeA:
-        A = A / A.sum(axis=0)  # scaling to make column sums equal to 1
-    x = random_point_in_l2_ball(center=center, radius=radius)
-    xavg = x.sum() / x.size
-    x = np.maximum(x - xavg, 0) + center
-    assert np.linalg.norm(x - center) <= radius
-    b = np.dot(A, x) + noise * (np.random.rand(m) - 0.5)
-    assert b.min() > 0, "need b > 0 for nonnegative regression."
-
-    f = PoissonRegression(A, b)
-    [burg_h, sqL2_h, shannon] = BurgEntropy(), SquaredL2Norm(), ShannonEntropy()
-    L = b.sum()
-    x0 = random_point_in_l2_ball(center, radius)
-    assert np.linalg.norm(x0 - center) <= radius
-
-    return f, [burg_h, sqL2_h, shannon], L, x0, x
+    return f, h, L, x0, f(x)
 
 
 def KL_nonneg_regr(m, n, noise=0.01, lamdaL1=0, randseed=-1, normalizeA=True):
@@ -268,111 +255,15 @@ def KL_nonneg_regr(m, n, noise=0.01, lamdaL1=0, randseed=-1, normalizeA=True):
     return f, h, L, x0
 
 
-def svm_alg_iris_ds(radius=1, center=None, lamda=0.5):
-    iris = load_iris()
-    X = iris.data
-    Y = iris.target
+def svm_digits_ds_divs_ball(center=None, lamda=0.5):
+    """
+    SVM problem with l2 ball constraint, n=264
+    """
+    X, Y = load_digits(n_class=2, return_X_y=True, as_frame=True)
     Y = (Y > 0).astype(int) * 2 - 1  # [0,1,2] --> [False,True,True] --> [0,1,1] --> [0,2,2] --> [-1,1,1]
 
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.1, random_state=2024)
-
-    f = SoftMarginLoss(0.5, X_train, Y_train)
-
-    if center is None:
-        center = np.array([radius] * X_train.shape[1])
-
-    h = BurgEntropyL2Ball(lamda=lamda, radius=radius, center=radius)
-    L = max(X_train.sum(axis=0))
-    x0 = random_point_in_l2_ball(center, radius)
-    assert np.linalg.norm(x0 - center) <= radius
-
-    return f, h, L, x0
-
-def svm_alg_banknote_ds(center=None, lamda=0.5):
-    X = pd.read_csv('https://archive.ics.uci.edu/ml/machine-learning-databases/00267/data_banknote_authentication.txt')
-
-    def generate_random(last_column_value):
-        if last_column_value == 0:
-            return np.random.randint(1, 11)
-        else:
-            return np.random.randint(90, 101)
-
-    # Adding 100 new columns to the dataframe
-    for i in range(100):
-        X[4+i] = X['0'].apply(generate_random)
-
-    Y = X['0'].to_numpy()
-    X = X.to_numpy()
-
-    f = SoftMarginLoss(lamda, X, Y)
-
-    n = X.shape[1]
-    radius = min(n ** -1 * lamda ** -1 * np.sum(np.linalg.norm(X[:, :-1], axis=1)), (2 / lamda) ** 0.5)
-    if center is None:
-        center = np.array([radius] * n)
-
-    h = BurgEntropyL2Ball(lamda=lamda, radius=radius, center=radius)
-    L = max(X.sum(axis=0))
-    x0 = random_point_in_l2_ball(center, radius)
-    assert np.linalg.norm(x0 - center) <= radius
-
-    return f, h, L, x0, radius
-
-
-def svm_alg_banknote_ds(center=None, lamda=0.5):
-    X = pd.read_csv('https://archive.ics.uci.edu/ml/machine-learning-databases/00267/data_banknote_authentication.txt')
-
-    def generate_random(last_column_value):
-        if last_column_value == 0:
-            return np.random.randint(1, 11)
-        else:
-            return np.random.randint(90, 101)
-
-    # Adding 100 new columns to the dataframe
-    for i in range(100):
-        X[4+i] = X['0'].apply(generate_random)
-
-    Y = X['0'].to_numpy()
-    X = X.to_numpy()
-
-    f = SoftMarginLoss(lamda, X, Y)
-
-    n = X.shape[1]
-    radius = min(n ** -1 * lamda ** -1 * np.sum(np.linalg.norm(X[:, :-1], axis=1)), (2 / lamda) ** 0.5)
-    if center is None:
-        center = np.array([radius] * n)
-
-    h = BurgEntropyL2Ball(lamda=lamda, radius=radius, center=radius)
-    L = max(X.sum(axis=0))
-    x0 = random_point_in_l2_ball(center, radius)
-    assert np.linalg.norm(x0 - center) <= radius
-
-    return f, h, L, x0, radius
-
-def smv_random_ds(center = None, lamda = 0.5):
-    X = np.concatenate((-10 * np.random.random_sample((1000, 150)),
-                        1000 * np.random.random_sample((1000, 150))), axis=0)
-    Y = np.concatenate((np.ones(1000) * -1, np.ones(1000)))
-    X[:, -1] = Y
-
-    f = SoftMarginLoss(lamda, X, Y)
-
-    n = X.shape[1]
-    radius = min(n ** -1 * lamda ** -1 * np.sum(np.linalg.norm(X[:, :-1], axis=1)), (2 / lamda) ** 0.5)
-    if center is None:
-        center = np.array([radius] * n)
-
-    h = BurgEntropyL2Ball(lamda=lamda, radius=radius, center=radius)
-    L = max(X.sum(axis=0))
-    x0 = random_point_in_l2_ball(center, radius)
-    assert np.linalg.norm(x0 - center) <= radius
-
-    return f, h, L, x0, radius
-
-
-def smv_digits_ds(center=None, lamda=0.5):
-    X, Y = load_digits(n_class=2, return_X_y=True)
-    Y = (Y > 0).astype(int) * 2 - 1  # [0,1,2] --> [False,True,True] --> [0,1,1] --> [0,2,2] --> [-1,1,1]
+    X = generate_random_value_in_df(X, Y, 200).to_numpy()
+    Y = Y.to_numpy()
 
     f = SoftMarginLoss(lamda, X, Y)
 
@@ -381,12 +272,39 @@ def smv_digits_ds(center=None, lamda=0.5):
     if center is None:
         center = np.zeros(n)
 
-    h = PolyDivBall(X, lamda=lamda, B=radius)
-    L = max(X.sum(axis=0))
-    x0 = random_point_in_l2_ball(center, radius)
-    assert np.linalg.norm(x0 - center) <= radius
+    [poly_h, sqL2_h, kl] = PolyDiv(X, lamda=lamda), SquaredL2Norm(), PowerNeg1()
+    L = poly_h.DS_mean + min((2*lamda)**0.5, poly_h.DS_mean_quad) - 0.01
+    x0 = random_point_in_l2_ball(center, radius, pos_dir=False)
+    # x0 = np.zeros(X.shape[1])
+    # x0 += 1e-20
+    # x0[4] = radius
 
-    return f, h, L, x0, radius
+    return f, [poly_h, sqL2_h, kl], L, x0, radius
+
+
+def smv_digits_ds_divs_simplex(lamda=0.5):
+    """
+    SVM problem with simplex, n=264
+    """
+    X, Y = load_digits(n_class=2, return_X_y=True, as_frame=True)
+    Y = (Y > 0).astype(int) * 2 - 1  # [0,1,2] --> [False,True,True] --> [0,1,1] --> [0,2,2] --> [-1,1,1]
+
+    X = generate_random_value_in_df(X, Y, 200).to_numpy()
+    Y = Y.to_numpy()
+
+    f = SoftMarginLoss(lamda, X, Y)
+
+    radius = 100
+    [poly_h, sqL2_h, kl] = PolyDiv(X, lamda=lamda, B=radius), SquaredL2Norm(), ShannonEntropy()
+    L = 0.1
+    x0 = random_point_on_simplex(X.shape[1], radius)
+    # x0 = np.zeros(X.shape[1])
+    # x0 += 1e-20
+    # x0[0] = radius
+
+    # assert x0.sum() - radius <= 1e-12
+
+    return f, [poly_h, sqL2_h, kl], L, x0, radius
 
 
 if __name__ == "__main__":
