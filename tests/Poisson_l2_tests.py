@@ -5,14 +5,14 @@ import accbpg
 
 def poisson_regr_in_l2_ball():
     matplotlib.rcParams.update({'font.size': 16, 'legend.fontsize': 14, 'font.family': 'serif'})
-    N = 5000
-    m = 100
+    N = 1000
+    m = 500
     n = 3000
-    radius = 1000
-    f, h, L, x0, solution = accbpg.Poisson_regrL2_ball(m, n, radius=radius, noise=0.01, lamda=0.001, randseed=1)
+    radius = 10
+    f, [h, h_kl, h_sq], L, x0, solution = accbpg.Poisson_regrL2_ball(m, n, radius=radius, noise=0.001, lamda=0.001, randseed=1)
 
     # Solve the problem using BPG w/o line seach and adaptive ABPG with gamma=2 (TSE)
-    x00_1, F00_1, G00_1, T00_1, alphas = accbpg.FW_alg_div_step(f, h, L, x0, lmo=accbpg.lmo_l2_ball(radius, center=radius), maxitrs=N, gamma=2.0,
+    x00_1, F00_1, G00_1, T00_1, alphas = accbpg.FW_alg_div_step(f, h_kl, 0.01, x0, lmo=accbpg.lmo_l2_ball(radius, center=radius), maxitrs=N, gamma=1.3,
                                                         ls_ratio=1.5, verbskip=1000)
     x00_, F00_, G00_, T00_ = accbpg.BPG(f, h, L, x0, maxitrs=N, linesearch=False, verbskip=1000)
     xLS_, FLS_, GLS_, TLS_ = accbpg.BPG(f, h, L, x0, maxitrs=N, linesearch=True, ls_ratio=1.5, verbskip=1000)
@@ -41,7 +41,7 @@ def poisson_regr_in_l2_ball():
         ax2.plot(alphas)
         ax2.set_xlabel("Iteration number k")
         ax2.set_ylabel("step size alpha_k")
-        ax2.set_xlim([0, 20])
+        ax2.set_yscale("linear")
 
         plt.tight_layout(w_pad=4)
         fig.suptitle('$min_{x \in \|x\|_2 \leq 1}  D_{KL}(b, Ax)$')

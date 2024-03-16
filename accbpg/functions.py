@@ -685,8 +685,8 @@ class PolyDiv(LegendreFunction):
 
 def lmo_l2_ball(radius, center=None):
     """
-    The Frank-Wolfe lmo function for the l2 ball on x > 0 and x \in ||radius||_2
-        is_shifted_pos_ball: Ball moves to the positive quartile
+    The Frank-Wolfe lmo function for the l2 ball on x > 0 and
+    x \in ||radius - center||_2 <= radius
     """
 
     def f(g):
@@ -694,19 +694,10 @@ def lmo_l2_ball(radius, center=None):
             center_p = np.zeros(g.shape[0])
         else:
             center_p = np.array([center] * g.shape[0])
-        g_local = g.copy()
-        g_local -= center_p
-        max_i = np.argmax(np.abs(g))
-        s = np.zeros(g.shape)
-        s[max_i] = np.sign(-1 * g[max_i])*radius
-        s += center_p
+        s = center_p - radius * g/np.linalg.norm(g)
         s[s == 0] = 1e-20
 
-        # so is that lmo incorrect?
-        # s = -1*np.sign(g_local)*np.abs(g_local)/np.linalg.norm(g_local)
-        # s *= radius
-
-        assert np.linalg.norm(s - center_p) - radius <= 1e-12
+        assert abs(np.linalg.norm(s - center_p) - radius) <= 1e-12
 
         return s
 

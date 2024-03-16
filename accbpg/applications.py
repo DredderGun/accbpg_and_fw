@@ -193,31 +193,30 @@ def Poisson_regrL2_ball(m, n, radius=1, noise=0.01, lamda=0, randseed=-1, normal
     if normalizeA:
         A = A / A.sum(axis=0)  # scaling to make column sums equal to 1
 
-    # Case 1. Point are right on the edge of ball
-    x = np.zeros(n)
-    x += 1e-20
-    x[1] = radius
+    center = np.ones(n) * radius
+
+    # Case 1. Point are right on the edge of the ball
+    # x = np.copy(center)
+    # x[1] = 1e-20
 
     # Case 2. Point slightly out of the edge
-    # x = np.zeros(n)
-    # x += 1e-20 - radius/10
-    # x[1] = radius
+    x = np.copy(center)
+    x[1] += radius * 0.9
 
     # Case 3. Point somewhere
-    # x = random_point_in_l2_ball(np.ones(n)*radius, 100)
-
-    x += radius
+    # x = random_point_in_l2_ball(center, radius)
 
     b = np.dot(A, x) + noise * (np.random.rand(m) - 0.5)
     assert b.min() > 0, "need b > 0 for nonnegative regression."
 
     f = PoissonRegression(A, b)
-    h = BurgEntropyL2Ball(lamda, radius=radius, center=radius)
+    [h1, h2, h3] = BurgEntropyL2Ball(lamda, radius=radius, center=radius), ShannonEntropy(), SquaredL2Norm()
     L = b.sum()
     # Initial point should be far from 0 in order for ARDA to work well!
-    x0 = np.ones(n)*radius
+    x0 = np.copy(center)
+    x0[1] = radius
 
-    return f, h, L, x0, f(x)
+    return f, [h1, h2, h3], L, x0, x
 
 
 def KL_nonneg_regr(m, n, noise=0.01, lamdaL1=0, randseed=-1, normalizeA=True):
