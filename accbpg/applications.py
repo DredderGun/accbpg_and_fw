@@ -1,15 +1,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+import os
 
 
 from .functions import *
 from .utils import load_libsvm_file, generate_random_value_in_df, random_point_on_simplex, random_point_in_l2_ball
 
-from sklearn.datasets import load_iris
-from sklearn.model_selection import train_test_split
 from sklearn.datasets import load_digits
 
-import pandas as pd
 
 def D_opt_libsvm(filename):
     """
@@ -304,6 +302,79 @@ def smv_digits_ds_divs_simplex(lamda=0.5):
     # assert x0.sum() - radius <= 1e-12
 
     return f, [poly_h, sqL2_h, kl], L, x0, radius
+
+
+def distributed_ridge_regression_problem(d, n, comp_nmbr=30, noise=0.1, lamda=0, randseed=-1):
+    """
+    \\todo
+    """
+    assert comp_nmbr > 0
+
+    def generate_covariance_matrix(d):
+        # Generate eigenvalues uniformly distributed in [1, 1000]
+        eigenvalues = np.random.uniform(1, 1000, size=d)
+
+        # Generate eigenvectors using QR decomposition of a random matrix
+        random_matrix = np.random.randn(d, d)
+        q, _ = np.linalg.qr(random_matrix)
+
+        # Construct covariance matrix using eigenvalue decomposition
+        covariance_matrix = np.sum([(eigenvalues[j] * np.outer(q[:, j], q[:, j])) for j in range(d)], axis=0)
+
+        return covariance_matrix
+
+    def generate_matrix_A(n, d, covariance_matrix):
+        # Generate samples from a multivariate normal distribution
+        mean = np.zeros(d)
+        A = np.random.multivariate_normal(mean, covariance_matrix, size=n)
+        return A
+
+    def create_matrices(N, d):
+        matrices = []
+        for i in range(N):
+            matrix = generate_covariance_matrix(d)
+            matrices.append(matrix)
+        return np.array(matrices)
+
+    def save_matrices(matrices, filename):
+        np.save(filename, matrices)
+
+    def load_matrices(filename):
+        return np.load(filename, allow_pickle=True)
+
+    filename = "covariance_matrices.npy"
+    if os.path.exists(filename):
+        covariance_matrices = load_matrices(filename)
+        print("Matrices loaded from file.")
+    else:
+        covariance_matrices = create_matrices(comp_nmbr, d)
+        save_matrices(covariance_matrices, filename)
+        print("Matrices created and saved to file.")
+
+    comp_datas = []
+    solution = np.random.normal(loc=5, scale=1, size=d)
+    L = lamda
+    for i in range(comp_nmbr):
+        if randseed > 0:
+            np.random.seed(randseed)
+
+        covariance_matrix = covariance_matrices[i]
+        A = generate_matrix_A(n, d, covariance_matrix)
+
+        b = np.dot(A, solution) + noise * (np.random.rand(n) - 0.001)
+        f = RidgeRegression(A, b, lamda)
+        comp_datas.append(f)
+
+        L += A.T.dot(A)
+
+    f = DistributedRidgeRegression(np.array(comp_datas))
+    similarity=math.sqrt((math.log(d/0.2)/1))
+    [h1, h2] = DistributedRidgeRegressionDiv(comp_datas[0], similarity), SquaredL2Norm()
+    L = np.linalg.norm(L, 'fro')/(comp_nmbr*n)
+    radius = 100
+    x0 = random_point_in_l2_ball(np.zeros(d), radius, pos_dir=False)
+
+    return f, [h1, h2], L, x0, radius, solution
 
 
 if __name__ == "__main__":

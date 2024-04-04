@@ -559,7 +559,8 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
             grad_d_prod = 0
         assert grad_d_prod <= 0, "np.dot(g, d_k) must be negative."
 
-        L = L / ls_ratio
+        if linesearch:
+            L = L / ls_ratio
         while True:
             alpha_k = min((-grad_d_prod / (2 * L * div)) ** (1 / (gamma - 1)), 1)
             x1 = x + alpha_k * d_k

@@ -1,8 +1,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-
+import math
 
 import numpy as np
+import cvxpy as cp
 
 
 class RSmoothFunction:
@@ -116,6 +117,95 @@ class PoissonRegression(RSmoothFunction):
         
         # return both function value and gradient
         fx = sum( self.b * np.log(self.b / Ax) + Ax - self.b )
+        return fx, g
+
+
+class RidgeRegression(RSmoothFunction):
+    """
+    \\ todo
+    """
+
+    def __init__(self, A, b, lamda):
+        assert A.shape[0] == b.shape[0], "A and b sizes not matching"
+        self.A = A
+        self.b = b
+        self.lamda = lamda
+        self.n = A.shape[0]
+        self.d = A.shape[1]
+
+    def __call__(self, x):
+        return self.func_grad(x, flag=0)
+
+    def get_cvxpy_objective(self, x):
+        lambd = cp.Parameter(nonneg=True, value=self.lamda)
+        return cp.pnorm(self.A @ x - self.b, p=2) ** 2 + lambd * cp.pnorm(x, p=2) ** 2
+
+    def gradient(self, x):
+        return self.func_grad(x, flag=1)
+
+    def func_grad(self, x, flag=2):
+        assert x.size == self.d, "RidgeRegression: x.size not equal to n."
+        Ax = np.dot(self.A, x)
+        if flag == 0:
+            fx = (1 / (2*self.n)) * np.linalg.norm(Ax - self.b)**2 + self.lamda * np.linalg.norm(x)**2
+            return fx
+
+        g = (1 / self.n) * np.dot(self.A.T, (Ax - self.b)) + 2 * self.lamda * x
+        if flag == 1:
+            return g
+
+        # return both function value and gradient
+        fx = (1 / (2*self.n)) * sum((Ax - self.b)**2) + self.lamda * np.sum(x**2)
+        return fx, g
+
+    def get_mx_prod_itself(self, similarity):
+        """
+        Function computes 2\n A^\top A
+        """
+
+        return (2 / self.d)*np.dot(self.A.T, self.A) + np.eye(self.d) * similarity
+
+    def get_mx_prod_b(self):
+        """
+        Function computes 2\n A^\top b
+        """
+        return (2 / self.d)*np.dot(self.A.T, self.b)
+
+class DistributedRidgeRegression(RSmoothFunction):
+    """
+    \\ todo
+    """
+
+    def __init__(self, Nodes):
+        self.Nodes = Nodes
+        self.m = Nodes.shape[0]
+
+    def __call__(self, x):
+        return self.func_grad(x, flag=0)
+
+    def get_cvxpy_solution(self):
+        x = cp.Variable(self.Nodes[0].A.shape[1])
+        def objective_fn(x):
+            return sum([node.get_cvxpy_objective(x) for node in self.Nodes])
+        problem = cp.Problem(cp.Minimize(objective_fn(x)))
+        problem.solve()
+
+        return x.value
+
+    def gradient(self, x):
+        return self.func_grad(x, flag=1)
+
+    def func_grad(self, x, flag=2):
+        if flag == 0:
+            return 1 / self.m * sum(node() for node in self.Nodes)
+
+        # use array broadcasting
+        g = 1 / self.m * sum(node.gradient(x) for node in self.Nodes)
+        if flag == 1:
+            return g
+
+        # return both function value and gradient
+        fx = 1 / self.m * sum(node(x) for node in self.Nodes)
         return fx, g
 
 
@@ -679,6 +769,29 @@ class PolyDiv(LegendreFunction):
         Return argmin_{x in C} { Psi(x) + <g, x> + L * D(x,y)  }
         """
         assert False, "Not implemented yet"
+
+
+class DistributedRidgeRegressionDiv(LegendreFunction):
+    """
+    \\ todo
+    """
+
+    def __init__(self, f, similarity):
+        assert similarity > 0, "BurgEntropyL1: lambda should be nonnegative."
+        self.similarity = similarity
+        self.f = f
+
+    def __call__(self, x):
+        return self.f(x) + 0.5 * self.similarity * np.linalg.norm(x) ** 2
+
+    def divergence(self, x, y):
+        """
+        Return D(x,y) = h(x) - h(y) - <h'(y), x-y>
+        """
+        return self(x) - self(y) - np.dot(self.gradient(y), x - y)
+
+    def gradient(self, x):
+        return self.f.gradient(x) + self.similarity*x
 
 #######################################################################
 
