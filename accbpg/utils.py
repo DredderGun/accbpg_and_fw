@@ -2,7 +2,6 @@ import os.path
 import numpy as np
 import scipy.sparse as sparse
 
-from sklearn.datasets import load_digits
 import pandas as pd
 
 
@@ -157,25 +156,6 @@ def load_sido(filename):
 
     return X, y
 
-def random_point_in_l2_ball(center, radius, pos_dir=False):
-    # Generate a random point on the unit sphere
-    ndim = len(center)
-    random_direction = np.random.randn(ndim)
-    random_direction /= np.linalg.norm(random_direction)
-
-    if pos_dir:
-        random_direction = np.sign(random_direction) * random_direction
-
-    # Generate a random radius within the given ball's radius
-    random_radius = np.random.uniform(radius*0.8, radius)
-
-    # Scale the random point by the random radius
-    random_point = center + random_radius * random_direction
-
-    assert np.linalg.norm(random_point - center) - radius <= 1e-15
-
-    return random_point
-
 
 def generate_random_value_in_df(DF, conditions_ser, num_new_cols):
     # Generate random DataFrame new_values
@@ -203,9 +183,28 @@ def generate_random_value_in_df(DF, conditions_ser, num_new_cols):
     return pd.concat([DF.reset_index(drop=True), df_to_add], axis=1)
 
 
-def random_point_on_simplex(n, radius):
+def random_point_in_l2_ball(center, radius, pos_dir=False):
+    # Generate a random point on the unit sphere
+    ndim = len(center)
+    random_direction = np.random.randn(ndim)
+    random_direction /= np.linalg.norm(random_direction)
+
+    if pos_dir:
+        random_direction = np.sign(random_direction) * random_direction
+
+    # Generate a random radius within the given ball's radius
+    random_radius = np.random.uniform(radius*0.8, radius)
+
+    # Scale the random point by the random radius
+    random_point = center + random_radius * random_direction
+
+    assert np.linalg.norm(random_point - center) - radius <= 1e-15
+
+    return random_point
+
+def random_point_on_simplex(n, radius=1):
     # Generate n random numbers
-    rand_nums = np.random.rand(n-1)
+    rand_nums = np.random.uniform(low=0.01, high=radius, size=(n-1,))
 
     # Sort the random numbers
     rand_nums.sort()
@@ -218,6 +217,12 @@ def random_point_on_simplex(n, radius):
 
     return diffs
 
+
+def edge_point_on_simplex(edge_index, n, radius=1, tol=1e-5):
+    x = np.zeros(n) + tol
+    x[edge_index] = radius - tol*(n-1)
+
+    return x
 
 if __name__ == "__main__":
     pass
