@@ -48,7 +48,7 @@ def BPG(f, h, L, x0, maxitrs, epsilon=1e-14, linesearch=True, ls_ratio=1.2,
         if linesearch:
             L = L / ls_ratio
             x1 = h.div_prox_map(x, g, L)
-            while f(x1) > fx + np.dot(g, x1-x) + L*h.divergence(x1, x) and h.divergence(x1, x) > 0:
+            while f(x1) > fx + np.dot(g, x1-x) + L*h.divergence(x1, x):
                 L = L * ls_ratio
                 x1 = h.div_prox_map(x, g, L)
             x = x1

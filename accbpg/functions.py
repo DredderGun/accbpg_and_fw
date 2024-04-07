@@ -1,6 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-import math
+
 
 import numpy as np
 import cvxpy as cp
@@ -345,9 +345,6 @@ class BurgEntropy(LegendreFunction):
         """
         Return argmin_{x > 0} { <g, x> + L * h(x) } 
         This function needs to be replaced with inheritance
-
-        Возвращает градиент функции argmin_{x > 0} { <g, x> + L * h(x) },
-        где h это прокс функция из энтропии Бёрга
         """
         assert L > 0, "BurgEntropy prox_map only takes positive L value."
         assert g.min() > 0, "BurgEntropy prox_map only takes positive value."
@@ -357,12 +354,6 @@ class BurgEntropy(LegendreFunction):
         """
         Return argmin_{x > C} { <g, x> + L * D(x,y) }
         This is a general function that works for all derived classes
-
-        Возвращает точь в точь градиент функции argmin_{x > C} { <g, x> + L * D(x,y) },
-        где D это энтропия Бёрга.
-
-        Зачем этот градиент вызывать через prox_map непонятно. Видимо,
-        чтобы запутать
         """
         assert y.shape == g.shape, "Vectors y and g are of different sizes." 
         assert y.min() > 0 and L > 0, "Either y or L is not positive."
@@ -414,8 +405,6 @@ class BurgEntropyL2(BurgEntropy):
     def prox_map(self, g, L):
         """
         Return argmin_{x > 0} { (lamda/2) * ||x||_2^2 + <g, x> + L * h(x) }
-
-        Тут так же как и в потомке возвращается argmin функции выше
         """
         assert L > 0, "BurgEntropyL2: prox_map only takes positive L value."
         gg = g / L

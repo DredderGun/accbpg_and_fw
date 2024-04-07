@@ -223,6 +223,3 @@ def edge_point_on_simplex(edge_index, n, radius=1, tol=1e-5):
     x[edge_index] = radius - tol*(n-1)
 
     return x
-
-if __name__ == "__main__":
-    pass

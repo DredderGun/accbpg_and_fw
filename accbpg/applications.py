@@ -364,7 +364,3 @@ def distributed_ridge_regression_problem(d, n, comp_nmbr=30, noise=0.1, lamda=0,
     x0 = random_point_in_l2_ball(np.zeros(d), radius, pos_dir=False)
 
     return f, [h1, h2], L, x0, radius, solution
-
-
-if __name__ == "__main__":
-    pass
