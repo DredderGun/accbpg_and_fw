@@ -514,23 +514,25 @@ def ABDA(f, h, L, x0, gamma, maxitrs, epsilon=1e-14, theta_eq=True,
 def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=True, ls_ratio=2,
                     verbose=True, verbskip=1):
     """
-    Classic Frank-Wolfe's algorithm
+    Frank-Wolfe's algorithm with the Bregman divergence
 
     Inputs:
         f, h, L:  f is L-smooth relative to h, and Psi is defined within h
         x0:       initial point to start algorithm
-        gamma:    triangle scaling exponent (TSE) for Bregman distance D_h(x,y)
         maxitrs:  maximum number of iterations
+        gamma:    triangle scaling exponent (TSE) for Bregman distance D_h(x,y)
+        lmo:      linear minimization oracle
         epsilon:  stop if D_h(z[k],z[k-1]) < epsilon
-        theta_eq: calculate theta_k by solving equality using Newton's method
+        linesearch:  whether or not perform line search (True or False)
+        ls_ratio: backtracking line search parameter >= 1
         verbose:  display computational progress (True or False)
         verbskip: number of iterations to skip between displays
 
     Returns (x, Fx, Ls):
-        x: the last iterate of the algorithm
-        F: array storing F(x[k]) for all k
-        G: triangle scaling gains D(xk,yk)/D(zk,zk_1)/theta_k^gamma
-        T: array storing time used up to iteration k
+        x:  the last iterate of the algorithm
+        F:  array storing F(x[k]) for all k
+        Ls: array storing local Lipschitz constants obtained by line search
+        T:  array storing time used up to iteration k
     """
     if verbose:
         print("\nFW adaptive algorithm")
@@ -540,7 +542,6 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
     F = np.zeros(maxitrs)
     Ls = np.ones(maxitrs) * L
     T = np.zeros(maxitrs)
-    alphas = np.zeros(maxitrs)
     delta = 1e-20
 
     x = np.copy(x0)
@@ -572,8 +573,6 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
         x = x1
         x[x == 0] = delta
 
-        alphas[k] = alpha_k
-
         Ls[k] = L
         if verbose and k % verbskip == 0:
             print("{0:6d}  {1:10.3e}  {2:10.3e}  {3:6.1f}".format(k, F[k], L, T[k]))
@@ -585,4 +584,4 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
     F = F[0:k + 1]
     Ls = Ls[0:k + 1]
     T = T[0:k + 1]
-    return x, F, Ls, T, alphas
+    return x, F, Ls, T

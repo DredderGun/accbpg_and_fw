@@ -699,7 +699,7 @@ class L2L1Linf(LegendreFunction):
 
 class PolyDiv(LegendreFunction):
     """
-    Div from https://arxiv.org/pdf/1710.04718.pdf (27) with constraint on l2 ball
+    A divegrence with reference function from https://arxiv.org/pdf/1710.04718.pdf (27) with constraint on l2 ball
     """
 
     def __init__(self, DS, lamda=0, B=1):
@@ -737,27 +737,7 @@ class PolyDiv(LegendreFunction):
         Bregman divergence D(x, y) = h(x) - h(y) - \nabla h(y) (x - y)
         """
         assert x.shape == y.shape, "PolyDivBall: x and y not same shape."
-        # xy_d = np.linalg.norm(x - y) ** 2
-        # xy_s = np.linalg.norm(x + y) ** 2
-        # x_norm = np.linalg.norm(x)
-        # y_norm = np.linalg.norm(x)
-
         return self.h(x) - self.h(y) - np.dot(self.gradient(y), x - y)
-
-
-    def prox_map(self, g, L):
-        """
-        Return argmin_{x in C} { Psi(x) + <g, x> + L * h(x) }
-        """
-        assert False, "Not implemented yet"
-        # assert L > 0, "L2L1Linf: L should be positive."
-
-
-    def div_prox_map(self, y, g, L):
-        """
-        Return argmin_{x in C} { Psi(x) + <g, x> + L * D(x,y)  }
-        """
-        assert False, "Not implemented yet"
 
 
 class DistributedRidgeRegressionDiv(LegendreFunction):
@@ -807,6 +787,10 @@ def lmo_l2_ball(radius, center=None):
 
 
 def lmo_linf_ball(radius, center=None):
+    """
+    The Frank-Wolfe lmo function for the l_\infty ball on x > 0 and
+    x \in ||radius - center||_2 <= radius
+    """
     assert center is None, "center are not implemented yet"
 
     def f(g):
@@ -823,7 +807,7 @@ def lmo_simplex(radius=1):
     def f(g):
         s = np.zeros(g.shape)
         s += 1e-60
-        s[np.argmin(g)] = radius  # see LMO for simplex e.g.: https://arxiv.org/abs/2106.10261v1 page 9
+        s[np.argmin(g)] = radius  # for example see LMO for simplex e.g.: https://arxiv.org/abs/2106.10261v1 page 9
 
         return s
 

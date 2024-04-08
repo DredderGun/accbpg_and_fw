@@ -1,5 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+import math
 import os
 
 
@@ -168,20 +169,19 @@ def Poisson_regrL2(m, n, noise=0.01, lamda=0, randseed=-1, normalizeA=True):
     return f, h, L, x0
 
 
-def Poisson_regr_simplex(m, n, radius=1, noise=0.01, lamda=0, randseed=-1, normalizeA=True):
+def Poisson_regr_simplex(m, n, noise=0.01, randseed=-1, normalizeA=True):
     """
-    Generate a random instance of L2-regularized Poisson regression problem
-            minimize_{x \in B}  D_KL(b, Ax)
+    Generate a random instance of the Poisson regression problem on the unit simplex
+            minimize_{x \in simplex}  D_KL(b, Ax)
     where
         A:  m by n nonnegative matrix
         b:  nonnegative vector of length m
         noise:  noise level to generate b = A * x + noise
-        lambda: L2 regularization weight
         normalizeA: whether to normalize columns of A
 
     Return f, h, L, x0:
         f: f(x) = D_KL(b, Ax)
-        h: Burg entropy with L2 ball projection
+        [h1, h2, h3]: Divergences list
         L: L = ||b||_2
         x0: initial point is center of simplex
     """
@@ -236,14 +236,13 @@ def KL_nonneg_regr(m, n, noise=0.01, lamdaL1=0, randseed=-1, normalizeA=True):
     h = ShannonEntropyL1(lamdaL1)
     L = max( A.sum(axis=0) )    #L = 1.0 if columns of A are normalized
     x0 = 0.5*np.ones(n)
-    #x0 = (1.0/n)*np.ones(n)
 
     return f, h, L, x0
 
 
 def svm_digits_ds_divs_ball(center=None, lamda=0.5):
     """
-    SVM problem with l2 ball constraint, n=264
+    SVM (binary classification) problem with l2 ball constraint, n=264
     """
     X, Y = load_digits(n_class=2, return_X_y=True, as_frame=True)
     Y = (Y > 0).astype(int) * 2 - 1  # [0,1,2] --> [False,True,True] --> [0,1,1] --> [0,2,2] --> [-1,1,1]
@@ -261,41 +260,26 @@ def svm_digits_ds_divs_ball(center=None, lamda=0.5):
     [poly_h, sqL2_h, kl] = PolyDiv(X, lamda=lamda), SquaredL2Norm(), PowerNeg1()
     L = poly_h.DS_mean + min((2*lamda)**0.5, poly_h.DS_mean_quad) - 0.01
     x0 = random_point_in_l2_ball(center, radius, pos_dir=False)
-    # x0 = np.zeros(X.shape[1])
-    # x0 += 1e-20
-    # x0[4] = radius
-
-    return f, [poly_h, sqL2_h, kl], L, x0, radius
-
-
-def smv_digits_ds_divs_simplex(lamda=0.5):
-    """
-    SVM problem with simplex, n=264
-    """
-    X, Y = load_digits(n_class=2, return_X_y=True, as_frame=True)
-    Y = (Y > 0).astype(int) * 2 - 1  # [0,1,2] --> [False,True,True] --> [0,1,1] --> [0,2,2] --> [-1,1,1]
-
-    X = generate_random_value_in_df(X, Y, 200).to_numpy()
-    Y = Y.to_numpy()
-
-    f = SoftMarginLoss(lamda, X, Y)
-
-    radius = 100
-    [poly_h, sqL2_h, kl] = PolyDiv(X, lamda=lamda, B=radius), SquaredL2Norm(), ShannonEntropy()
-    L = 0.1
-    x0 = random_point_on_simplex(X.shape[1], radius)
-    # x0 = np.zeros(X.shape[1])
-    # x0 += 1e-20
-    # x0[0] = radius
-
-    # assert x0.sum() - radius <= 1e-12
 
     return f, [poly_h, sqL2_h, kl], L, x0, radius
 
 
 def distributed_ridge_regression_problem(d, n, comp_nmbr=30, noise=0.1, lamda=0, randseed=-1):
     """
-    \\todo
+    A ridge regression problem over a network of agents, see description https://arxiv.org/pdf/2110.12347.pdf page 8
+
+    where
+        d:  number of rows in data matrix A
+        n:  number of cols in data matrix A
+        comp_nmbr: number of agents in network
+        noise:  noise level to generate b = A * x + noise
+        lambda: L2 regularization weight
+
+    Return f, h, L, x0:
+        f: f(x) = D_KL(Ax, b)
+        h: h(x) = Shannon entropy (with L1 regularization as Psi)
+        L: L = max(sum(A, axis=0)), maximum column sum
+        x0: initial point, scaled version of all-one vector
     """
     assert comp_nmbr > 0
 
