@@ -1,4 +1,4 @@
-# Accelerated Bregman Proximal Gradient Methods
+# Accelerated Bregman Proximal Gradient Methods and Frank-Wolfe with divergence
 
 A Python package of accelerated first-order algorithms for solving relatively-smooth convex optimization problems
 
@@ -17,6 +17,7 @@ with a reference function h(x), where C is a closed convex set and
 * ABPG-expo (ABPG with exponent adaption)
 * ABPG-gain (ABPG with gain adaption)
 * ABDA (Accelerated Bregman dual averaging) method
+* Frank-Wolfe algorithm with Bregman divergence
 
 Additional algorithms for solving D-Optimal Experiment Design problems:
 
