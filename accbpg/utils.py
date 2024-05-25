@@ -202,7 +202,10 @@ def random_point_in_l2_ball(center, radius, pos_dir=False):
 
     return random_point
 
-def random_point_on_simplex(n, radius=1):
+def random_point_on_simplex(n, radius=1, center=False):
+    if center:
+        return np.ones(n) / n
+
     # Generate n random numbers
     rand_nums = np.random.uniform(low=0.01, high=radius, size=(n-1,))
 

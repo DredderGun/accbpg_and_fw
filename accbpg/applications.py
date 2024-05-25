@@ -1,7 +1,5 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-import math
-import os
 
 
 from .functions import *
@@ -169,7 +167,7 @@ def Poisson_regrL2(m, n, noise=0.01, lamda=0, randseed=-1, normalizeA=True):
     return f, h, L, x0
 
 
-def Poisson_regr_simplex(m, n, noise=0.01, randseed=-1, normalizeA=True):
+def Poisson_regr_simplex(m, n, noise=0.01, normalizeA=True):
     """
     Generate a random instance of the Poisson regression problem on the unit simplex
             minimize_{x \in simplex}  D_KL(b, Ax)
@@ -181,29 +179,65 @@ def Poisson_regr_simplex(m, n, noise=0.01, randseed=-1, normalizeA=True):
 
     Return f, h, L, x0:
         f: f(x) = D_KL(b, Ax)
-        [h1, h2, h3]: Divergences list
+        h: Divergence
         L: L = ||b||_2
         x0: initial point is center of simplex
     """
+    np.random.seed()
+    
+    key1 = 'x0_center_sol_center'
+    key2 = 'x0_edge_sol_edge'
+    key3 = 'x0_edge_sol_center'
+    key4 = 'x0_center_sol_edge'
 
-    if randseed > 0:
-        np.random.seed(randseed)
-    A = np.random.rand(m, n)
-    if normalizeA:
-        A = A / A.sum(axis=0)  # scaling to make column sums equal to 1
+    def generate_problem(solution_and_x0):
+        solution, x0 = solution_and_x0
+        A = np.random.rand(m, n)
+        if normalizeA:
+            A = A / A.sum(axis=0)  # scaling to make column sums equal to 1
 
-    x = random_point_on_simplex(n)
+        b = np.dot(A, solution) + noise * (np.random.rand(m))
+        assert b.min() > 0, "need b > 0 for nonnegative regression."
 
-    b = np.dot(A, x) + noise * (np.random.rand(m))
-    assert b.min() > 0, "need b > 0 for nonnegative regression."
+        f = PoissonRegression(A, b)
+        L = b.sum()
 
-    f = PoissonRegression(A, b)
-    [h1, h2, h3] = BurgEntropySimplex(), ShannonEntropy(), SquaredL2Norm()
-    L = b.sum()
-    # Initial point should be far from 0 in order for ARDA to work well!
-    x0 = edge_point_on_simplex(80, n)
+        return f, L, solution, x0
 
-    return f, [h1, h2, h3], L, x0, x
+    def generate_sol_and_x0(place):
+        # Initial point should be far from 0 in order for ARDA to work well!
+
+        if place == key1:
+            x0 = random_point_on_simplex(n, center=True)
+            solution = random_point_on_simplex(n)
+
+            return solution, x0
+        elif place == key2:
+            x0 = edge_point_on_simplex(np.random.randint(n), n)
+            solution = edge_point_on_simplex(np.random.randint(n), n)
+
+            return solution, x0
+        elif place == key3:
+            x0 = edge_point_on_simplex(np.random.randint(n), n)
+            solution = random_point_on_simplex(n, center=True)
+
+            return solution, x0
+        elif place == key4:
+            x0 = random_point_on_simplex(n, center=True)
+            solution = edge_point_on_simplex(np.random.randint(n), n)
+
+            return solution, x0
+        else:
+            assert 0, 'Place had not been defined'
+
+    points_positions = {key1: generate_problem(generate_sol_and_x0(key1)),
+                        key2: generate_problem(generate_sol_and_x0(key2)),
+                        key3: generate_problem(generate_sol_and_x0(key3)),
+                        key4: generate_problem(generate_sol_and_x0(key4))}
+
+    h = BurgEntropySimplex()
+
+    return h, points_positions
 
 
 def KL_nonneg_regr(m, n, noise=0.01, lamdaL1=0, randseed=-1, normalizeA=True):
@@ -262,89 +296,3 @@ def svm_digits_ds_divs_ball(center=None, lamda=0.5):
     x0 = random_point_in_l2_ball(center, radius, pos_dir=False)
 
     return f, [poly_h, sqL2_h, kl], L, x0, radius
-
-
-def distributed_ridge_regression_problem(d, n, comp_nmbr=30, noise=0.1, lamda=0, randseed=-1):
-    """
-    A ridge regression problem over a network of agents, see description https://arxiv.org/pdf/2110.12347.pdf page 8
-
-    where
-        d:  number of rows in data matrix A
-        n:  number of cols in data matrix A
-        comp_nmbr: number of agents in network
-        noise:  noise level to generate b = A * x + noise
-        lambda: L2 regularization weight
-
-    Return f, h, L, x0:
-        f: f(x) = D_KL(Ax, b)
-        h: h(x) = Shannon entropy (with L1 regularization as Psi)
-        L: L = max(sum(A, axis=0)), maximum column sum
-        x0: initial point, scaled version of all-one vector
-    """
-    assert comp_nmbr > 0
-
-    def generate_covariance_matrix(d):
-        # Generate eigenvalues uniformly distributed in [1, 1000]
-        eigenvalues = np.random.uniform(1, 1000, size=d)
-
-        # Generate eigenvectors using QR decomposition of a random matrix
-        random_matrix = np.random.randn(d, d)
-        q, _ = np.linalg.qr(random_matrix)
-
-        # Construct covariance matrix using eigenvalue decomposition
-        covariance_matrix = np.sum([(eigenvalues[j] * np.outer(q[:, j], q[:, j])) for j in range(d)], axis=0)
-
-        return covariance_matrix
-
-    def generate_matrix_A(n, d, covariance_matrix):
-        # Generate samples from a multivariate normal distribution
-        mean = np.zeros(d)
-        A = np.random.multivariate_normal(mean, covariance_matrix, size=n)
-        return A
-
-    def create_matrices(N, d):
-        matrices = []
-        for i in range(N):
-            matrix = generate_covariance_matrix(d)
-            matrices.append(matrix)
-        return np.array(matrices)
-
-    def save_matrices(matrices, filename):
-        np.save(filename, matrices)
-
-    def load_matrices(filename):
-        return np.load(filename, allow_pickle=True)
-
-    filename = "covariance_matrices.npy"
-    if os.path.exists(filename):
-        covariance_matrices = load_matrices(filename)
-        print("Matrices loaded from file.")
-    else:
-        covariance_matrices = create_matrices(comp_nmbr, d)
-        save_matrices(covariance_matrices, filename)
-        print("Matrices created and saved to file.")
-
-    comp_datas = []
-    solution = np.random.normal(loc=5, scale=1, size=d)
-    L = lamda
-    for i in range(comp_nmbr):
-        if randseed > 0:
-            np.random.seed(randseed)
-
-        covariance_matrix = covariance_matrices[i]
-        A = generate_matrix_A(n, d, covariance_matrix)
-
-        b = np.dot(A, solution) + noise * (np.random.rand(n) - 0.001)
-        f = RidgeRegression(A, b, lamda)
-        comp_datas.append(f)
-
-        L += A.T.dot(A)
-
-    f = DistributedRidgeRegression(np.array(comp_datas))
-    similarity=math.sqrt((math.log(d/0.2)/1))
-    [h1, h2] = DistributedRidgeRegressionDiv(comp_datas[0], similarity), SquaredL2Norm()
-    L = np.linalg.norm(L, 'fro')/(comp_nmbr*n)
-    radius = 100
-    x0 = random_point_in_l2_ball(np.zeros(d), radius, pos_dir=False)
-
-    return f, [h1, h2], L, x0, radius, solution
