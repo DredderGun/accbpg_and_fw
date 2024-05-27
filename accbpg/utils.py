@@ -183,6 +183,40 @@ def generate_random_value_in_df(DF, conditions_ser, num_new_cols):
     return pd.concat([DF.reset_index(drop=True), df_to_add], axis=1)
 
 
+def generate_dataset_for_svm(m, n):
+    """
+    Get normal distributed dataset with condition labels
+
+    Inputs:
+    m: rows number in the dataset
+    n: columns number in the dataset
+
+    Returns:
+    data: Dataset
+    labels: +1 or -1 array with labels to data
+
+    """
+    data = []
+    labels = []
+    rng = np.random.default_rng()
+
+    variance = 100
+    for i in range(m):
+        row = rng.standard_normal(n) * variance
+        mask = row > 0
+        if mask.sum() < n * 0.53:
+            labels.append(1)
+        else:
+            labels.append(-1)
+
+        data.append(row)
+
+    data = np.array(data)
+    labels = np.array(labels)
+
+    return data, labels
+
+
 def random_point_in_l2_ball(center, radius, pos_dir=False):
     # Generate a random point on the unit sphere
     ndim = len(center)
@@ -193,7 +227,7 @@ def random_point_in_l2_ball(center, radius, pos_dir=False):
         random_direction = np.sign(random_direction) * random_direction
 
     # Generate a random radius within the given ball's radius
-    random_radius = np.random.uniform(radius*0.8, radius)
+    random_radius = np.random.uniform(radius*0.9, radius*0.99)
 
     # Scale the random point by the random radius
     random_point = center + random_radius * random_direction
@@ -201,6 +235,7 @@ def random_point_in_l2_ball(center, radius, pos_dir=False):
     assert np.linalg.norm(random_point - center) - radius <= 1e-15
 
     return random_point
+
 
 def random_point_on_simplex(n, radius=1, center=False):
     if center:

@@ -247,7 +247,7 @@ class KLdivRegression(RSmoothFunction):
         return fx, g
            
 
-class SoftMarginLoss(RSmoothFunction):
+class SVM_fun(RSmoothFunction):
     def __init__(self, lamda, A, y):
         self.lamda = lamda
         self.A = A
@@ -267,7 +267,7 @@ class SoftMarginLoss(RSmoothFunction):
 
     def subgradient_loss(self, x):
         indicator = (self.y * np.dot(self.A, x) < 1).astype(int)
-        return np.mean(np.multiply(indicator[:, np.newaxis], np.multiply(self.y[:, np.newaxis], self.A)), axis=0)
+        return np.mean(indicator[:, np.newaxis] * self.y[:, np.newaxis] * self.A, axis=0)
 
     def func_grad(self, x, flag=2):
 

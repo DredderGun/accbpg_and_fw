@@ -3,8 +3,8 @@
 
 
 from .functions import *
-from .utils import load_libsvm_file, generate_random_value_in_df, random_point_on_simplex, random_point_in_l2_ball, \
-    edge_point_on_simplex
+from .utils import load_libsvm_file, random_point_on_simplex, random_point_in_l2_ball, \
+    edge_point_on_simplex, generate_dataset_for_svm
 
 from sklearn.datasets import load_digits
 
@@ -167,6 +167,40 @@ def Poisson_regrL2(m, n, noise=0.01, lamda=0, randseed=-1, normalizeA=True):
     return f, h, L, x0
 
 
+def KL_nonneg_regr(m, n, noise=0.01, lamdaL1=0, randseed=-1, normalizeA=True):
+    """
+    Generate a random instance of L1-regularized KL regression problem
+            minimize_{x >= 0}  D_KL(Ax, b) + lamda * ||x||_1
+    where 
+        A:  m by n nonnegative matrix
+        b:  nonnegative vector of length m
+        noise:  noise level to generate b = A * x + noise
+        lambda: L2 regularization weight
+        normalizeA: wether or not to normalize columns of A
+    
+    Return f, h, L, x0: 
+        f: f(x) = D_KL(Ax, b)
+        h: h(x) = Shannon entropy (with L1 regularization as Psi)
+        L: L = max(sum(A, axis=0)), maximum column sum
+        x0: initial point, scaled version of all-one vector
+    """
+    if randseed > 0:
+        np.random.seed(randseed)
+    A = np.random.rand(m,n)
+    if normalizeA:
+        A = A / A.sum(axis=0)   # scaling to make column sums equal to 1
+    x = np.random.rand(n)
+    b = np.dot(A, x) + noise * (np.random.rand(m) - 0.5)
+    assert b.min() > 0, "need b > 0 for nonnegative regression."
+
+    f = KLdivRegression(A, b)
+    h = ShannonEntropyL1(lamdaL1)
+    L = max( A.sum(axis=0) )    #L = 1.0 if columns of A are normalized
+    x0 = 0.5 * np.ones(n)
+
+    return f, h, L, x0
+
+
 def Poisson_regr_simplex(m, n, noise=0.01, normalizeA=True):
     """
     Generate a random instance of the Poisson regression problem on the unit simplex
@@ -183,8 +217,6 @@ def Poisson_regr_simplex(m, n, noise=0.01, normalizeA=True):
         L: L = ||b||_2
         x0: initial point is center of simplex
     """
-    np.random.seed()
-    
     key1 = 'x0_center_sol_center'
     key2 = 'x0_edge_sol_edge'
     key3 = 'x0_edge_sol_center'
@@ -240,59 +272,33 @@ def Poisson_regr_simplex(m, n, noise=0.01, normalizeA=True):
     return h, points_positions
 
 
-def KL_nonneg_regr(m, n, noise=0.01, lamdaL1=0, randseed=-1, normalizeA=True):
-    """
-    Generate a random instance of L1-regularized KL regression problem
-            minimize_{x >= 0}  D_KL(Ax, b) + lamda * ||x||_1
-    where 
-        A:  m by n nonnegative matrix
-        b:  nonnegative vector of length m
-        noise:  noise level to generate b = A * x + noise
-        lambda: L2 regularization weight
-        normalizeA: wether or not to normalize columns of A
-    
-    Return f, h, L, x0: 
-        f: f(x) = D_KL(Ax, b)
-        h: h(x) = Shannon entropy (with L1 regularization as Psi)
-        L: L = max(sum(A, axis=0)), maximum column sum
-        x0: initial point, scaled version of all-one vector
-    """
-    if randseed > 0:
-        np.random.seed(randseed)
-    A = np.random.rand(m,n)
-    if normalizeA:
-        A = A / A.sum(axis=0)   # scaling to make column sums equal to 1
-    x = np.random.rand(n)
-    b = np.dot(A, x) + noise * (np.random.rand(m) - 0.5)
-    assert b.min() > 0, "need b > 0 for nonnegative regression."
-
-    f = KLdivRegression(A, b)
-    h = ShannonEntropyL1(lamdaL1)
-    L = max( A.sum(axis=0) )    #L = 1.0 if columns of A are normalized
-    x0 = 0.5*np.ones(n)
-
-    return f, h, L, x0
-
-
-def svm_digits_ds_divs_ball(center=None, lamda=0.5):
+def svm_digits_ds_divs_ball(center=None, lamda=0.5, real_ds=False):
     """
     SVM (binary classification) problem with l2 ball constraint, n=264
+    where
+        center:  ball constraint center
+        lamda: lambda coef in SVM regularization
+        real_ds: what will DS be used
     """
-    X, Y = load_digits(n_class=2, return_X_y=True, as_frame=True)
-    Y = (Y > 0).astype(int) * 2 - 1  # [0,1,2] --> [False,True,True] --> [0,1,1] --> [0,2,2] --> [-1,1,1]
 
-    X = generate_random_value_in_df(X, Y, 200).to_numpy()
-    Y = Y.to_numpy()
+    if real_ds:
+        X, Y = load_digits(n_class=2, return_X_y=True, as_frame=True)
+        Y = (Y > 0).astype(int) * 2 - 1  # [0,1,2] --> [False,True,True] --> [0,1,1] --> [0,2,2] --> [-1,1,1]
+        X = X.to_numpy()
+        Y = Y.to_numpy()
+    else:
+        X, Y = generate_dataset_for_svm(700, 2000)
 
-    f = SoftMarginLoss(lamda, X, Y)
+    f = SVM_fun(lamda, X, Y)
 
     n = X.shape[1]
     radius = min(n ** -1 * lamda ** -1 * np.sum(np.linalg.norm(X[:, :-1], axis=1)), (2 / lamda) ** 0.5)
     if center is None:
         center = np.zeros(n)
 
-    [poly_h, sqL2_h, kl] = PolyDiv(X, lamda=lamda), SquaredL2Norm(), PowerNeg1()
-    L = poly_h.DS_mean + min((2*lamda)**0.5, poly_h.DS_mean_quad) - 0.01
+    [poly_h, sqL2_h] = PolyDiv(X, lamda=lamda), SquaredL2Norm()
+    # we know an upper bound of L
+    L = (poly_h.DS_mean + min((2*lamda)**0.5, poly_h.DS_mean_quad))*0.08
     x0 = random_point_in_l2_ball(center, radius, pos_dir=False)
 
-    return f, [poly_h, sqL2_h, kl], L, x0, radius
+    return f, [poly_h, sqL2_h], L, x0, radius

@@ -511,6 +511,7 @@ def ABDA(f, h, L, x0, gamma, maxitrs, epsilon=1e-14, theta_eq=True,
     T = T[0:k+1]
     return x, F, G, T
 
+
 def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=True, ls_ratio=2,
                     verbose=True, verbskip=1):
     """
