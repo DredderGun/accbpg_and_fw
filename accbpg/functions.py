@@ -282,6 +282,39 @@ class SVM_fun(RSmoothFunction):
         fx = self.F(x)
         return fx, g
 
+
+class X_equals_one_cnstrnt(RSmoothFunction):
+    """
+    This is constraint functions of the SwitchingGradientDescent algorithm.
+    It means \| x \|_1 == (1 +- epsilon)
+    """
+
+    def __init__(self, sign, radius=1):
+        self.sign = sign
+        self.radius = radius
+
+    def gradient(self, x):
+        return self.func_grad(x, flag=1)
+
+    def func_grad(self, x, flag):
+        assert x.min() > 0, "The constraint demands positive values"
+        sign = self.sign
+
+        if flag == 0:
+            fx = x.sum() - self.radius if sign == 1 else self.radius - x.sum()
+            return fx
+
+        g = sign * np.ones(x.shape[0])
+        if flag == 1:
+            return g
+
+        fx = x.sum() - self.radius if sign else self.radius - x.sum()
+        return fx, g
+
+    def __call__(self, x):
+        return self.func_grad(x, flag=0)
+
+
 #######################################################################
 
 

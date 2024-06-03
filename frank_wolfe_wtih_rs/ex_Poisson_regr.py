@@ -2,11 +2,14 @@ import time
 
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
+
 import accbpg
 
 
 def poisson_regr_in_simplex():
     matplotlib.rcParams.update({'font.size': 16, 'legend.fontsize': 14, 'font.family': 'serif'})
+    np.random.seed(2024)
     N = 2500
     m = 2000
     n = 1000

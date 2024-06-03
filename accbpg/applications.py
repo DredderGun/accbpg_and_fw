@@ -267,7 +267,7 @@ def Poisson_regr_simplex(m, n, noise=0.01, normalizeA=True):
                         key3: generate_problem(generate_sol_and_x0(key3)),
                         key4: generate_problem(generate_sol_and_x0(key4))}
 
-    h = BurgEntropySimplex()
+    h = BurgEntropy()
 
     return h, points_positions
 
