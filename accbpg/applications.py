@@ -201,6 +201,23 @@ def KL_nonneg_regr(m, n, noise=0.01, lamdaL1=0, randseed=-1, normalizeA=True):
     return f, h, L, x0
 
 
+def Poisson_regr_simplex_acc(m, n, noise=0.01, normalizeA=True):
+    x0 = random_point_on_simplex(n, center=True)
+    solution = random_point_on_simplex(n)
+    A = np.random.rand(m, n)
+    if normalizeA:
+        A = A / A.sum(axis=0)  # scaling to make column sums equal to 1
+
+    b = np.dot(A, solution) + noise * (np.random.rand(m))
+    assert b.min() > 0, "need b > 0 for nonnegative regression."
+
+    f = PoissonRegression(A, b)
+    L = b.sum()
+    h = BurgEntropySimplex(eps=1e-7)
+
+    return f, h, L, x0
+
+
 def Poisson_regr_simplex(m, n, noise=0.01, normalizeA=True):
     """
     Generate a random instance of the Poisson regression problem on the unit simplex

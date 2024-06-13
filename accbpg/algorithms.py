@@ -259,7 +259,7 @@ def ABPG_expo(f, h, L, x0, gamma0, maxitrs, epsilon=1e-14, delta=0.2,
                 
             if condition and gamma > 1:
                 gamma = max(gamma - delta, 1)
-            else: 
+            else:
                 condition = False
                
         # store and display computational progress
@@ -543,7 +543,7 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
     F = np.zeros(maxitrs)
     Ls = np.ones(maxitrs) * L
     T = np.zeros(maxitrs)
-    delta = 1e-20
+    delta = epsilon
 
     x = np.copy(x0)
     for k in range(maxitrs):
@@ -586,3 +586,143 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
     Ls = Ls[0:k + 1]
     T = T[0:k + 1]
     return x, F, Ls, T
+
+
+class SwitchingGradientDescent:
+    def __init__(self, target_f, solution_f=0, M=1, cnstrnt_nmbr=0, lamda=0,
+                 name="Switching Gradient Descent with polyak step", constraints=None):
+        self.name = name
+        self.cnstrnt_nmbr = cnstrnt_nmbr
+        self.target_f = target_f
+        self.solution_f = solution_f
+        self.M = M
+        self.constraints = constraints
+        self.lamda = lamda
+
+    def check_constraints(self, x):
+        """
+        All constraint functions of the problem
+        :return: a failed constrained function and its gradient function
+        """
+        for i, g_func in enumerate(self.constraints):
+            if g_func(x) > self.cnstrnt_nmbr:
+                return g_func
+        return None
+
+    def get_max_constraint(self, x):
+        """
+        All constraint functions of the problem
+        :return: a failed constrained function and its gradient function
+        """
+        return np.max(np.array([g(x) for g in self.constraints]))
+
+    def solve(self, x0, epsilon=1e-9, maxitrs=20000, verbose=True, verbskip=1):
+        f = self.target_f
+        k_unprod = 0
+
+        if verbose:
+            print(f'{self.name}')
+            print("k     F(x)    time")
+
+        start_time = time.time()
+        F = np.zeros(maxitrs)
+        T = np.zeros(maxitrs)
+
+        x = np.copy(x0)
+        F[0] = f.func_grad(x, flag=0)
+        T[0] = time.time() - start_time
+        k = 1
+        while True:
+            failed_constraint_f = self.check_constraints(x)
+            if failed_constraint_f is None:
+                fx, grad = f.func_grad(x)
+                alpha = max(epsilon, (fx - self.solution_f) / self.M * np.linalg.norm(grad))
+            else:
+                grad = failed_constraint_f.gradient(x)
+                alpha = failed_constraint_f(x) / np.linalg.norm(grad)**2
+                k_unprod += 1
+            # projection
+            x_prev, x = x, np.clip(x - alpha * grad, 1e-9, None)
+
+            F[k] = f.func_grad(x, flag=0)
+            T[k] = time.time() - start_time
+
+            if verbose and k % verbskip == 0:
+                print("{0:6d}  {1:10.3e}  {2:10.3e}".format(k, F[k], T[k]))
+
+            if abs(F[k] - F[k-1]) < epsilon or k >= maxitrs - 1:
+                break
+            k += 1
+
+        print(f'Unprod steps amount: {k_unprod}, method: {self.name}')
+
+        F = F[0:k + 1]
+        T = T[0:k + 1]
+        return x, F, T
+
+
+def AIBM(f, h, L, x0, gamma, maxitrs, epsilon=1e-14, verbose=True, verbskip=1):
+    if verbose:
+        print("\nAIBM method for min_{x in C} F(x) = f(x) + Psi(x)")
+        print("     k      F(x)       L       time")
+
+    start_time = time.time()
+    F = np.zeros(maxitrs)
+    G = np.zeros(maxitrs)
+    T = np.zeros(maxitrs)
+    p = 2
+
+    x = z = np.ones(x0.shape[0]) * h.prox_map(np.zeros(x0.shape[0]), 1) # argmin on h(x)
+    # x = z = x0 # argmin on h(x)
+
+    fx, g = f.func_grad(x, flag=2)
+    while True:
+        alpha = 1 / L
+        y = h.prox_map(g, 1)
+        if f(y) <= fx + np.dot(g, y - x) + L * h.divergence(y, x):
+            break
+        L = L * 2
+
+    B = A = alpha
+    g_prox_map = alpha * f.gradient(x)
+
+    F[0] = fx + h.extra_Psi(x)
+    G[0] = L
+    T[0] = time.time() - start_time
+
+    for k in range(1, maxitrs):
+        L /= 2
+        while True:
+            alpha = (1 / L) * (1 + k / (2 * p)) ** ((p - 1) * (gamma - 1))
+            B = (L * alpha ** gamma) ** (1 / (gamma - 1))
+            x = (alpha / B) * z + (1 - alpha / B) * y
+            grad_x = f.gradient(x)
+            g_prox_map += alpha * grad_x
+            z_k = h.prox_map(g_prox_map, 1)
+            w = alpha / B * z_k + (1 - alpha / B) * y
+            fx = f(x)
+            if f(w) <= fx + np.dot(grad_x, w - x) + L * h.divergence(w, x) + epsilon:
+                break
+            g_prox_map -= alpha * grad_x
+            L = L * 2
+
+        F[k] = fx + h.extra_Psi(x)
+        T[k] = time.time() - start_time
+
+        # Update
+        A += alpha
+        y = B / A * w + (1 - B / A) * y
+        z = z_k
+
+        # store and display computational progress
+        if verbose and k % verbskip == 0:
+            print("{0:6d}  {1:10.3e}  {2:10.3e}  {3:6.1f}".format(k, F[k], L, T[k]))
+
+        # stopping criteria
+        if abs(F[k] - F[k - 1]) < epsilon:
+            break
+
+    F = F[0:k + 1]
+    G = G[0:k + 1]
+    T = T[0:k + 1]
+    return x, F, G, T

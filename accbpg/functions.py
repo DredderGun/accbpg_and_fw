@@ -437,6 +437,8 @@ class BurgEntropySimplex(BurgEntropy):
         fc = sum(1/(gg+c))-1
         while abs(fc) > self.eps:
             fpc = sum(-1.0/(gg+c)**2)
+            if (c - (c - fc / fpc)) == 0:
+                break
             c = c - fc / fpc
             fc = sum(1/(gg+c))-1
         x = 1.0/(gg+c)
