@@ -261,3 +261,23 @@ def edge_point_on_simplex(edge_index, n, radius=1, tol=1e-5):
     x[edge_index] = radius - tol*(n-1)
 
     return x
+
+
+def get_random_float(range=1):
+    if range == 0:
+        return 0
+    assert range > 0, 'The range must be positive.'
+    val = range * np.random.random_sample()
+    # val = np.random.normal(range, range / 2, None)
+    assert val > 0
+    return val
+
+
+def get_random_vector(size, range=1):
+    if range == 0:
+        return np.zeros(size)
+    assert range > 0, 'The range must be positive.'
+    vec = range * np.random.random_sample(size=size)
+    # vec = np.random.normal(range, range / 2, size)
+    assert vec.min() > 0
+    return vec

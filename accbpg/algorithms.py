@@ -5,6 +5,8 @@
 import numpy as np
 import time
 
+from accbpg.utils import get_random_float, get_random_vector
+
 
 def BPG(f, h, L, x0, maxitrs, epsilon=1e-14, linesearch=True, ls_ratio=1.2,
         verbose=True, verbskip=1):
@@ -661,7 +663,7 @@ class SwitchingGradientDescent:
         return x, F, T
 
 
-def AIBM(f, h, L, x0, gamma, maxitrs, epsilon=1e-14, verbose=True, verbskip=1):
+def AIBM(f, h, L, x0, gamma, maxitrs, epsilon=1e-14, verbose=True, noise=0, verbskip=1):
     if verbose:
         print("\nAIBM method for min_{x in C} F(x) = f(x) + Psi(x)")
         print("     k      F(x)       L       time")
@@ -672,19 +674,22 @@ def AIBM(f, h, L, x0, gamma, maxitrs, epsilon=1e-14, verbose=True, verbskip=1):
     T = np.zeros(maxitrs)
     p = 2
 
-    x = z = np.ones(x0.shape[0]) * h.prox_map(np.zeros(x0.shape[0]), 1) # argmin on h(x)
-    # x = z = x0 # argmin on h(x)
+    x = z = np.ones(x0.shape[0]) * h.prox_map(np.zeros(x0.shape[0]), 1)
 
+    delta = get_random_float(noise)
+    delta_grad = get_random_vector(x.shape[0], noise)
     fx, g = f.func_grad(x, flag=2)
+    fx += delta
+    g += delta_grad
     while True:
         alpha = 1 / L
         y = h.prox_map(g, 1)
-        if f(y) <= fx + np.dot(g, y - x) + L * h.divergence(y, x):
+        if f(y) <= fx + np.dot(g, y - x) + L * h.divergence(y, x) + epsilon:
             break
         L = L * 2
 
     B = A = alpha
-    g_prox_map = alpha * f.gradient(x)
+    xi_grad = alpha * f.gradient(x)
 
     F[0] = fx + h.extra_Psi(x)
     G[0] = L
@@ -692,18 +697,20 @@ def AIBM(f, h, L, x0, gamma, maxitrs, epsilon=1e-14, verbose=True, verbskip=1):
 
     for k in range(1, maxitrs):
         L /= 2
+        delta = get_random_float(noise)
         while True:
             alpha = (1 / L) * (1 + k / (2 * p)) ** ((p - 1) * (gamma - 1))
             B = (L * alpha ** gamma) ** (1 / (gamma - 1))
             x = (alpha / B) * z + (1 - alpha / B) * y
-            grad_x = f.gradient(x)
-            g_prox_map += alpha * grad_x
-            z_k = h.prox_map(g_prox_map, 1)
+            delta_grad = get_random_vector(x.shape[0], noise)
+            grad_x = f.gradient(x) + delta_grad
+            xi_grad += alpha * grad_x
+            z_k = h.prox_map(xi_grad, 1)
             w = alpha / B * z_k + (1 - alpha / B) * y
-            fx = f(x)
+            fx = f(x) + delta
             if f(w) <= fx + np.dot(grad_x, w - x) + L * h.divergence(w, x) + epsilon:
                 break
-            g_prox_map -= alpha * grad_x
+            xi_grad -= alpha * grad_x
             L = L * 2
 
         F[k] = fx + h.extra_Psi(x)

@@ -725,6 +725,29 @@ class PolyDiv(LegendreFunction):
 
         return self.lamda**2 * norm4 + 2*self.lamda*self.DS_mean*norm3 + self.DS_mean_quad*norm2
 
+    def prox_map(self, g, L):
+        """
+        Return argmin_{x in C} { Psi(x) + <g, x> + L * h(x) }
+        """
+        x = cp.Variable(g.shape[0])
+        h_x = (self.lamda ** 2 * 1 / 4 * cp.norm(x) ** 4 + self.lamda * 2 / 3 * self.DS_mean * cp.norm(x) ** 3 +
+               self.DS_mean_quad * 1 / 2 * cp.norm(x) ** 2)
+
+        regularizator = 10**3 # to make a solver works correct
+        prob = cp.Problem(cp.Minimize((L / regularizator)*h_x + (g / regularizator)@x))
+        solution = prob.solve(verbose=False, abstol=1e-7)
+
+        return x.value
+
+    def div_prox_map(self, y, g, L):
+        """
+        Return argmin_{x in C} { Psi(x) + <g, x> + L * D(x,y)  }
+        default implementation by calling prox_map(g - L*g(y), L)
+        """
+        grad_h_y = self.gradient(y)
+        return self.prox_map(g - L * grad_h_y, L)
+
+
     def extra_Psi(self, x):
         return 0
 
@@ -732,7 +755,7 @@ class PolyDiv(LegendreFunction):
         """
         gradient of h(x)
         """
-        return (self.lamda**2 * np.linalg.norm(x)**2 + 2*self.lamda*self.DS_mean * np.linalg.norm(x) + self.DS_mean_quad) * x
+        return (self.lamda**4 * np.linalg.norm(x)**2 + 2*self.lamda*self.DS_mean + self.DS_mean_quad) * x
 
     def divergence(self, x, y):
         """
