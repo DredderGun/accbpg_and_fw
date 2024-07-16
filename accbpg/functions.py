@@ -704,10 +704,10 @@ class PolyDiv(LegendreFunction):
     A divegrence with reference function from https://arxiv.org/pdf/1710.04718.pdf (27) with constraint on l2 ball
     """
 
-    def __init__(self, DS, lamda=0, B=1):
+    def __init__(self, DS, lamda=0, radius=1):
         self.lamda = lamda
+        self.radius = radius
         self.DS = DS
-        self.B = B
 
         self.DS_mean = np.mean(np.linalg.norm(DS, axis=1))
         self.DS_mean_quad = np.mean(np.linalg.norm(DS, axis=1) ** 2)
@@ -733,9 +733,10 @@ class PolyDiv(LegendreFunction):
         h_x = (self.lamda ** 2 * 1 / 4 * cp.norm(x) ** 4 + self.lamda * 2 / 3 * self.DS_mean * cp.norm(x) ** 3 +
                self.DS_mean_quad * 1 / 2 * cp.norm(x) ** 2)
 
-        regularizator = 10**3 # to make a solver works correct
-        prob = cp.Problem(cp.Minimize((L / regularizator)*h_x + (g / regularizator)@x))
-        solution = prob.solve(verbose=False, abstol=1e-7)
+        g = (g / np.linalg.norm(g)) * self.radius
+
+        prob = cp.Problem(cp.Minimize(L*h_x + g@x), [cp.norm(x) <= self.radius])
+        solution = prob.solve(verbose=False)
 
         return x.value
 

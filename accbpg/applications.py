@@ -313,7 +313,7 @@ def svm_digits_ds_divs_ball(center=None, lamda=0.5, real_ds=False):
     if center is None:
         center = np.zeros(n)
 
-    [poly_h, sqL2_h] = PolyDiv(X, lamda=lamda), SquaredL2Norm()
+    [poly_h, sqL2_h] = PolyDiv(X, lamda=lamda, radius=radius), SquaredL2Norm()
     # we know an upper bound of L
     L = (poly_h.DS_mean + min((2*lamda)**0.5, poly_h.DS_mean_quad))*0.08
     x0 = random_point_in_l2_ball(center, radius, pos_dir=False)
