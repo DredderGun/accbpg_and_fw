@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-
+import math
+import time
 
 import numpy as np
 import cvxpy as cp
@@ -787,6 +788,65 @@ class DistributedRidgeRegressionDiv(LegendreFunction):
 
     def gradient(self, x):
         return self.f.gradient(x) + self.similarity*x
+
+
+class LogisticRegressionFun:
+    """
+    Logistic Regression function
+
+    ...
+
+    Attributes
+    ----------
+    X : matrix
+        Exposure in seconds.
+
+    y :
+    Methods
+    -------
+    f(omega)
+        call function
+
+    gradient(X, y)
+        invoke gradient
+
+    """
+    def __init__(self, X, y, alpha=0.001):
+        self.X = X
+        self.y = y
+        self.alpha = alpha
+
+    def f(self, omega):
+        exp_power = -self.y * self.X.dot(omega)
+        max_exp_power = np.max(exp_power)
+        # exp_power = (exp_power - np.min(exp_power)) / (np.max(exp_power) - np.min(exp_power))
+
+        if max_exp_power < 30:
+            first_term = np.mean(
+                max_exp_power + np.log(1 / math.exp(max_exp_power) + np.exp(exp_power - max_exp_power)))
+        else:
+            first_term = np.mean(exp_power)
+
+        second_term = (self.alpha / 2) * np.linalg.norm(omega, ord=2) ** 2
+        return -1*first_term + second_term
+
+    def gradient(self, X, y):
+        alpha = self.alpha
+        m = X.shape[0]
+
+        def f(omega):
+            exp_power = -y * X.dot(omega)
+            # Normalize to avoid overflow
+            exp_power = (exp_power - np.min(exp_power)) / (np.max(exp_power) - np.min(exp_power))
+
+            sigmoid_term = 1 / (1 + np.exp(exp_power))
+            gradient_without_reg = -1 / m * X.T.dot(y * sigmoid_term)
+            regularization_term = alpha * omega
+            gradient = gradient_without_reg + regularization_term
+
+            return gradient
+
+        return lambda omega: f(omega)
 
 #######################################################################
 
