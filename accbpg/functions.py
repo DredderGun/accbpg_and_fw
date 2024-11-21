@@ -121,95 +121,6 @@ class PoissonRegression(RSmoothFunction):
         return fx, g
 
 
-class RidgeRegression(RSmoothFunction):
-    """
-    \\ todo
-    """
-
-    def __init__(self, A, b, lamda):
-        assert A.shape[0] == b.shape[0], "A and b sizes not matching"
-        self.A = A
-        self.b = b
-        self.lamda = lamda
-        self.n = A.shape[0]
-        self.d = A.shape[1]
-
-    def __call__(self, x):
-        return self.func_grad(x, flag=0)
-
-    def get_cvxpy_objective(self, x):
-        lambd = cp.Parameter(nonneg=True, value=self.lamda)
-        return cp.pnorm(self.A @ x - self.b, p=2) ** 2 + lambd * cp.pnorm(x, p=2) ** 2
-
-    def gradient(self, x):
-        return self.func_grad(x, flag=1)
-
-    def func_grad(self, x, flag=2):
-        assert x.size == self.d, "RidgeRegression: x.size not equal to n."
-        Ax = np.dot(self.A, x)
-        if flag == 0:
-            fx = (1 / (2*self.n)) * np.linalg.norm(Ax - self.b)**2 + self.lamda * np.linalg.norm(x)**2
-            return fx
-
-        g = (1 / self.n) * np.dot(self.A.T, (Ax - self.b)) + 2 * self.lamda * x
-        if flag == 1:
-            return g
-
-        # return both function value and gradient
-        fx = (1 / (2*self.n)) * sum((Ax - self.b)**2) + self.lamda * np.sum(x**2)
-        return fx, g
-
-    def get_mx_prod_itself(self, similarity):
-        """
-        Function computes 2\n A^\top A
-        """
-
-        return (2 / self.d)*np.dot(self.A.T, self.A) + np.eye(self.d) * similarity
-
-    def get_mx_prod_b(self):
-        """
-        Function computes 2\n A^\top b
-        """
-        return (2 / self.d)*np.dot(self.A.T, self.b)
-
-class DistributedRidgeRegression(RSmoothFunction):
-    """
-    \\ todo
-    """
-
-    def __init__(self, Nodes):
-        self.Nodes = Nodes
-        self.m = Nodes.shape[0]
-
-    def __call__(self, x):
-        return self.func_grad(x, flag=0)
-
-    def get_cvxpy_solution(self):
-        x = cp.Variable(self.Nodes[0].A.shape[1])
-        def objective_fn(x):
-            return sum([node.get_cvxpy_objective(x) for node in self.Nodes])
-        problem = cp.Problem(cp.Minimize(objective_fn(x)))
-        problem.solve()
-
-        return x.value
-
-    def gradient(self, x):
-        return self.func_grad(x, flag=1)
-
-    def func_grad(self, x, flag=2):
-        if flag == 0:
-            return 1 / self.m * sum(node() for node in self.Nodes)
-
-        # use array broadcasting
-        g = 1 / self.m * sum(node.gradient(x) for node in self.Nodes)
-        if flag == 1:
-            return g
-
-        # return both function value and gradient
-        fx = 1 / self.m * sum(node(x) for node in self.Nodes)
-        return fx, g
-
-
 class KLdivRegression(RSmoothFunction):
     """
     f(x) = D_KL(Ax, b) for linear inverse problem A * x = b
@@ -734,10 +645,13 @@ class PolyDiv(LegendreFunction):
         h_x = (self.lamda ** 2 * 1 / 4 * cp.norm(x) ** 4 + self.lamda * 2 / 3 * self.DS_mean * cp.norm(x) ** 3 +
                self.DS_mean_quad * 1 / 2 * cp.norm(x) ** 2)
 
-        g = (g / np.linalg.norm(g)) * self.radius
+        g_norm = np.linalg.norm(g)
+        if g_norm == 0.0:
+            g_norm = 1e-8
+        g = (g / g_norm) * self.radius
 
         prob = cp.Problem(cp.Minimize(L*h_x + g@x), [cp.norm(x) <= self.radius])
-        solution = prob.solve(verbose=False)
+        prob.solve(solver=cp.SCS, verbose=True)
 
         return x.value
 
@@ -767,89 +681,18 @@ class PolyDiv(LegendreFunction):
         return self.h(x) - self.h(y) - np.dot(self.gradient(y), x - y)
 
 
-class DistributedRidgeRegressionDiv(LegendreFunction):
-    """
-    \\ todo
-    """
-
-    def __init__(self, f, similarity):
-        assert similarity > 0, "BurgEntropyL1: lambda should be nonnegative."
-        self.similarity = similarity
-        self.f = f
-
-    def __call__(self, x):
-        return self.f(x) + 0.5 * self.similarity * np.linalg.norm(x) ** 2
-
-    def divergence(self, x, y):
-        """
-        Return D(x,y) = h(x) - h(y) - <h'(y), x-y>
-        """
-        return self(x) - self(y) - np.dot(self.gradient(y), x - y)
-
-    def gradient(self, x):
-        return self.f.gradient(x) + self.similarity*x
-
-
-class LogisticRegressionFun:
-    """
-    Logistic Regression function
-
-    ...
-
-    Attributes
-    ----------
-    X : matrix
-        Exposure in seconds.
-
-    y :
-    Methods
-    -------
-    f(omega)
-        call function
-
-    gradient(X, y)
-        invoke gradient
-
-    """
-    def __init__(self, X, y, alpha=0.001):
-        self.X = X
-        self.y = y
-        self.alpha = alpha
-
-    def f(self, omega):
-        exp_power = -self.y * self.X.dot(omega)
-        max_exp_power = np.max(exp_power)
-        # exp_power = (exp_power - np.min(exp_power)) / (np.max(exp_power) - np.min(exp_power))
-
-        if max_exp_power < 30:
-            first_term = np.mean(
-                max_exp_power + np.log(1 / math.exp(max_exp_power) + np.exp(exp_power - max_exp_power)))
-        else:
-            first_term = np.mean(exp_power)
-
-        second_term = (self.alpha / 2) * np.linalg.norm(omega, ord=2) ** 2
-        return -1*first_term + second_term
-
-    def gradient(self, X, y):
-        alpha = self.alpha
-        m = X.shape[0]
-
-        def f(omega):
-            exp_power = -y * X.dot(omega)
-            # Normalize to avoid overflow
-            exp_power = (exp_power - np.min(exp_power)) / (np.max(exp_power) - np.min(exp_power))
-
-            sigmoid_term = 1 / (1 + np.exp(exp_power))
-            gradient_without_reg = -1 / m * X.T.dot(y * sigmoid_term)
-            regularization_term = alpha * omega
-            gradient = gradient_without_reg + regularization_term
-
-            return gradient
-
-        return lambda omega: f(omega)
-
 #######################################################################
 
+def lmo_nuclear_norm_ball():
+    """
+    The Frank-Wolfe lmo for matrix completion problem.
+    """
+
+    def f(g):
+        U, S, Vh = np.linalg.svd(g, full_matrices=False)
+        return np.outer(U[:, 0], Vh[0])
+
+    return lambda g: f(g)
 
 def lmo_l2_ball(radius, center=None):
     """

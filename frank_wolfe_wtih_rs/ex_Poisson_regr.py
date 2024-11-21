@@ -10,6 +10,7 @@ def poisson_regr_in_simplex():
     N = 2500
     m = 2000
     n = 1000
+    verbskip=1000
     radius = 1
 
     h, p_positions = accbpg.Poisson_regr_simplex(m, n, noise=0.001)
@@ -22,14 +23,14 @@ def poisson_regr_in_simplex():
         f, L, solution, x0 = value
 
         x00_FW, F00_FW, G00_FW, T00_FW = accbpg.FW_alg_div_step(f, h, L, x0, lmo=accbpg.lmo_simplex(radius), maxitrs=N, gamma=2.0,
-                                                            ls_ratio=1.5, verbskip=100)
-        x00_, F00_, G00_, T00_ = accbpg.BPG(f, h, L, x0, maxitrs=N, linesearch=False, verbskip=1000)
-        xLS_, FLS_, GLS_, TLS_ = accbpg.BPG(f, h, L, x0, maxitrs=N, linesearch=True, ls_ratio=1.5, verbskip=1000)
-        x20_, F20_, G20_, T20_ = accbpg.ABPG(f, h, L, x0, gamma=2.0, maxitrs=N, theta_eq=False, verbskip=1000)
+                                                            ls_ratio=1.5, verbskip=verbskip)
+        x00_, F00_, G00_, T00_ = accbpg.BPG(f, h, L, x0, maxitrs=N, linesearch=False, verbskip=verbskip)
+        xLS_, FLS_, GLS_, TLS_ = accbpg.BPG(f, h, L, x0, maxitrs=N, linesearch=True, ls_ratio=1.5, verbskip=verbskip)
+        x20_, F20_, G20_, T20_ = accbpg.ABPG(f, h, L, x0, gamma=2.0, maxitrs=N, theta_eq=False, verbskip=verbskip)
         x2e_, F2e_, _, G2e_, T2e_ = accbpg.ABPG_expo(f, h, L, x0, gamma0=3, maxitrs=N, theta_eq=False, Gmargin=1,
-                                                     verbskip=1000)
+                                                     verbskip=verbskip)
         x2g_, F2g_, G2g_, _, _, _ = accbpg.ABPG_gain(f, h, L, x0, gamma=2, maxitrs=N, G0=0.1, ls_inc=1.5,
-                                                     ls_dec=1.5, theta_eq=True, verbskip=1000)
+                                                     ls_dec=1.5, theta_eq=True, verbskip=verbskip)
 
         labels = [r"BPG", r"BPG-LS", r"ABPG", r"ABPG-e", r"ABPG-g", r"FW"]
         styles = ['k:', 'g-', 'b-.', 'k-', 'r--', 'y-']
