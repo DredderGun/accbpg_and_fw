@@ -6,7 +6,11 @@ import accbpg
 
 
 def start():
-    "Adaptive Intermediate Bregman Method (AIBM) VS other accelerated Bregman gradient methods."
+    """
+    Adaptive Intermediate Bregman Method (AIBM) VS other accelerated Bregman gradient methods.
+    See the paper Accelerated Bregman gradient methods for relatively smooth and
+    relatively Lipschitz continuous minimization problems
+    """
     matplotlib.rcParams.update({'font.size': 16, 'legend.fontsize': 14, 'font.family': 'serif'})
     # np.random.seed(1)
     N = 1000
