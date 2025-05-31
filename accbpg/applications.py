@@ -1,6 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-
+import numpy as np
 
 from .functions import *
 from .utils import load_libsvm_file, random_point_on_simplex, random_point_in_l2_ball, \
@@ -202,8 +202,8 @@ def KL_nonneg_regr(m, n, noise=0.01, lamdaL1=0, randseed=-1, normalizeA=True):
 
 
 def Poisson_regr_simplex_acc(m, n, noise=0.01, normalizeA=True):
-    x0 = random_point_on_simplex(n, center=True)
-    solution = random_point_on_simplex(n)
+    x0 = random_point_on_simplex(n, center=False)
+    solution = random_point_on_simplex(n, center=False)
     A = np.random.rand(m, n)
     if normalizeA:
         A = A / A.sum(axis=0)  # scaling to make column sums equal to 1
@@ -212,10 +212,11 @@ def Poisson_regr_simplex_acc(m, n, noise=0.01, normalizeA=True):
     assert b.min() > 0, "need b > 0 for nonnegative regression."
 
     f = PoissonRegression(A, b)
-    L = b.sum()
+    L = np.abs(b).sum()
     h = BurgEntropySimplex(eps=1e-7)
+    h_euklid = SquaredL2Norm()
 
-    return f, h, L, x0
+    return f, [h, h_euklid], L, x0
 
 
 def Poisson_regr_simplex(m, n, noise=0.01, normalizeA=True):
@@ -319,3 +320,45 @@ def svm_digits_ds_divs_ball(center=None, lamda=0.5, real_ds=False):
     x0 = random_point_in_l2_ball(center, radius, pos_dir=False)
 
     return f, [poly_h, sqL2_h], L, x0, radius
+
+
+def FrobeniusSymLossEx(M, r, noise):
+    X0 = np.random.rand(M.shape[0], r)
+    upper_bound = 5
+    assert np.all(X0 >= 0) >= 0, "X0 must be non-negative"
+    f = FrobeniusSymLoss(M, X0)
+    # h = SumOf2nd4thPowers(6, 2*np.linalg.norm(M, 2))
+    h = SumOf2nd4thPowersPositiveOrthant(6, 2*np.linalg.norm(M, 2), upper_bound)
+    h_dual = SumOf2nd4thPowersDualProxMap(6, 2*np.linalg.norm(M, 2))
+    h_fw = SumOf2nd4thPowersWithFrankWolfe(6, 2*np.linalg.norm(M, 2), lmo_matrix_box(0, upper_bound))
+    L = 1
+
+    return f, [h, h_dual, h_fw], L, X0
+
+
+def FrobeniusSymLossResMeasEx(M, r, noise=0.0):
+    X0 = np.random.rand(M.shape[0], r)
+    upper_bound = 5
+    assert np.all(X0 >= 0) >= 0, "X0 must be non-negative"
+    f = FrobeniusSymLoss(M, X0)
+    # h = SumOf2nd4thPowers(6, 2*np.linalg.norm(M, 2))
+    h = SumOf2nd4thPowersPositiveOrthant(6, 2*np.linalg.norm(M, 2), upper_bound=None)
+    # h_fw = SumOf2nd4thPowersWithFrankWolfe(6, 2*np.linalg.norm(M, 2), lmo_matrix_box(0, upper_bound))
+    h_euklid = SquaredL2Norm()
+    L = 1
+
+    return f, [h, h_euklid], L, X0
+
+
+def FrobeniusSymLossExWithLinearCnstrnts(M, r, noise=0):
+    X0 = np.random.rand(M.shape[0], r)
+    # assert np.all(X0 >= 0), "X0 must be non-negative"
+    f = FrobeniusSymLoss(M, X0)
+    h = SumOf2nd4thPowersPositiveOrthant(6, 2*np.linalg.norm(M, 2))
+
+    A = np.random.rand(r)
+    b = np.random.rand(M.shape[0]) + 0.5
+    g = AX_b(A, b)
+    L = 1
+
+    return f, g, h, L, X0

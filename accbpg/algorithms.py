@@ -668,7 +668,7 @@ def AdaptFGM(f, h, L, x0, maxitrs, epsilon=1e-14, verbose=True, noise=0, verbski
     G = np.zeros(maxitrs)
     T = np.zeros(maxitrs)
 
-    x_k = y = u_k = np.ones(x0.shape[0])
+    x_k = y = u_k = np.ones(x0.shape)
     A_k = alpha_k = 0
 
     fx, g = f.func_grad(x_k, flag=2)
@@ -689,7 +689,7 @@ def AdaptFGM(f, h, L, x0, maxitrs, epsilon=1e-14, verbose=True, noise=0, verbski
             x = (alpha*u + A_k*x_k) / A
 
             fx = f(x_k)
-            if f(x) <= fx + np.dot(g_y, x - y) + L * h.divergence(x, y) + delta:
+            if f(x) <= fx + np.sum(g_y * (x - y)) + L * h.divergence(x, y) + delta:
                 A_k = A
                 u_k = u
                 x_k = x
@@ -712,3 +712,258 @@ def AdaptFGM(f, h, L, x0, maxitrs, epsilon=1e-14, verbose=True, noise=0, verbski
     G = G[0:k + 1]
     T = T[0:k + 1]
     return x_k, F, G, T
+
+
+def UniversalGM(f, h, L, x0, maxitrs, epsilon=1e-14, verbose=True, noise_level=0, verbskip=1):
+    if verbose:
+        print("\nUniversalGM method for min_{x in C} F(x) = f(x) + Psi(x)")
+        print("     k      F(x)       L       time")
+
+    start_time = time.time()
+    F = np.zeros(maxitrs)
+    G = np.zeros(maxitrs)
+    T = np.zeros(maxitrs)
+
+    x = np.copy(x0)
+    x_k = np.copy(x0)
+    fx, g = f.func_grad(x, flag=2)
+    F[0] = fx + h.extra_Psi(x)
+    G[0] = L
+    T[0] = time.time() - start_time
+
+    A_k = 0
+    u_k = np.ones(x0.shape)
+
+    for k in range(1, maxitrs):
+        noise = np.random.rand() * noise_level if noise_level > 0 else 0
+
+        L /= 2
+        while True:
+            alpha = (1 + math.sqrt(1 + 4*L*A_k)) / (2*L)
+            A = L * alpha**2
+            y = (alpha*u_k + A_k*x_k) / A
+            g_y = f.gradient(y)
+            g_y += noise
+            u = h.div_prox_map(u_k, g_y*alpha, 1)
+            x = (alpha*u + A_k*x_k) / A
+            
+            fy = f(y)
+            fy += noise
+            # if f(x) <= fy + np.sum(g_y * (x - y)) + L * h.divergence(x, y) + np.random.rand() * noise_level:
+            if f(x) <= fy + np.sum(g_y * (x - y)) + L * h.divergence(x, y):
+                A_k = A
+                u_k = u
+                x_k = x
+                break
+            L = L * 2
+            if L is None or math.isinf(L):
+                raise ValueError("L cannot be None or infinity")
+
+        F[k] = f(x_k) + h.extra_Psi(x_k)
+        G[k] = L
+        T[k] = time.time() - start_time
+
+        # store and display computational progress
+        if verbose and k % verbskip == 0:
+            print("{0:6d}  {1:10.3e}  {2:10.3e}  {3:6.1f}".format(k, F[k], L, T[k]))
+
+        # stopping criteria
+        if abs(F[k] - F[k - 1]) < epsilon:
+            break
+
+    F = F[0:k + 1]
+    G = G[0:k + 1]  
+    T = T[0:k + 1]
+    return x_k, F, G, T
+
+
+def PrimalDualSwitchingGradientMethod(f, h, L_init, cnstrnt_fun, x0, maxitrs, epsilon=1e-14,
+                                      linesearch=True, verbose=True, verbskip=100):
+    """
+    Solve:
+        minimize_{x in C} f(x) + Psi(x) 
+        s.t. cnstrnt_fun(x) <= ε
+
+    Inputs:
+        f:       RSmoothFunction (f is L-smooth relative to h)
+        h:       LegendreFunction (defines the kernel and Psi)
+        L_init:  initial guess for the relative smoothness constant
+        cnstrnt_fun: constraint function (must satisfy cnstrnt_fun(x) <= ε)
+                     cnstrnt_fun implements RSmoothFunction interface 
+                     (i.e. supports __call__ and .gradient(x))
+        x0:      initial point
+        maxitrs: maximum number of iterations
+        epsilon: tolerance for the constraint violation
+        linesearch: if True, performs a line search on productive steps.
+        verbose: print progress if True.
+        verbskip: print every verbskip iterations.
+    
+    Returns:
+        F:             array of [f(x)+Psi(x)] values at productive steps.
+        duality_gaps:  array of estimated real duality gaps.
+        Ls:            array storing the step constants (from productive steps).
+    """
+    
+    def is_nan_or_inf(x):
+        return np.any(np.isnan(x)) or np.any(np.isinf(x))
+    
+    def compute_dual_value(z_scalar, f, cnstrnt_fun, y0, max_inner=100, tol_inner=1e-9, alpha=1e-3):
+        """
+        Solve the inner maximization:
+            max_{y in Q} { -f(y) - z^T cnstrnt_fun(y) }
+        using gradient ascent.
+        
+        Parameters:
+            z_scalar : current Lagrange multiplier estimate (a scalar)
+            f        : the RSmoothFunction instance (must support __call__ and gradient)
+            cnstrnt_fun: constraint function (must support __call__ and gradient)
+            y0       : starting point (typically the current iterate x)
+            max_inner: maximum iterations for the inner loop
+            tol_inner: convergence tolerance for the inner loop
+            alpha    : step size for gradient ascent
+            
+        Returns:
+            dual_val : approximate maximum value, i.e. 
+                       d(z) ≈ max_{y in Q} { -f(y) - z_vec^T cnstrnt_fun(y) }
+            y        : approximate maximizer.
+        """
+        y = np.copy(y0)
+        for it in range(max_inner):
+            g_val = cnstrnt_fun(y)
+            if np.ndim(g_val) == 0:
+                dual_val = -f(y) - z_scalar * g_val
+                grad_dual = -f.gradient(y) - z_scalar * cnstrnt_fun.gradient(y)
+            else:
+                z_vec = z_scalar * np.ones_like(g_val)
+                dual_val = -f(y) - np.dot(z_vec, g_val)
+                g_grad = cnstrnt_fun.gradient(y)  # expected shape: (m, n)
+                grad_dual = -f.gradient(y) - np.sum(z_vec[:, None] * g_grad, axis=0)
+            y_next = y + alpha * grad_dual  # gradient ascent step
+            y_next = np.maximum(y_next, 1e-6)
+            
+            if is_nan_or_inf(y_next):
+                raise ValueError("compute_dual_value encountered NaN or infinite value in y_next")
+            if np.linalg.norm(y_next - y) < tol_inner:
+                y = y_next
+                break
+            y = y_next
+        # Final evaluation
+        g_val = cnstrnt_fun(y)
+        if np.ndim(g_val) == 0:
+            dual_val = -f(y) - z_scalar * g_val
+        else:
+            z_vec = z_scalar * np.ones_like(g_val)
+            dual_val = -f(y) - np.dot(z_vec, g_val)
+        return dual_val, y
+
+    def productive_line_search(x, fx, grad_fx, L_current):
+        """
+        Performs backtracking line search for the productive step.
+        Updates the candidate iterate using the proximal mapping induced by h.
+        """
+        max_line_search_iters = 1000  # safety bound
+        iter_ls = 0
+        while iter_ls < max_line_search_iters:
+            if L_current is None or math.isinf(L_current) or L_current <= 0:
+                raise ValueError("L_current became invalid during line search")
+
+            # Use h.div_prox_map which performs a proximal step using the divergence induced by h.
+            x_new = h.div_prox_map(x, grad_fx, L_current)
+            if x_new is None or is_nan_or_inf(x_new):
+                L_current *= 2
+                iter_ls += 1
+                continue
+
+            # Descent condition for relative smoothness.
+            if f(x_new) <= fx + np.sum(grad_fx * (x_new - x)) + L_current * h.divergence(x_new, x):
+                return x_new, L_current
+            L_current *= 2
+            iter_ls += 1
+        raise RuntimeError("Line search did not converge within maximum iterations")
+    
+    if verbose:
+        print("\n Primal-Dual method")
+        print("     k       F(x)         L_k       duality_gap     time")
+    
+    F = []
+    duality_gaps = np.zeros(maxitrs)
+    Ls = np.zeros(maxitrs)
+
+    x = np.copy(x0)
+    if is_nan_or_inf(x):
+        raise ValueError("Initial x0 contains NaN or infinite values")
+
+    L_prod = L_init
+    step_size_prod_sum = 0.0
+    step_size_unprod_sum = 0.0
+
+    productive_count = 0
+    start_time = time.time()
+    
+    for k in range(maxitrs):
+        fx, grad_fx = f.func_grad(x, flag=2)
+
+        constraint_val = cnstrnt_fun(x)
+        if np.any(np.isnan(constraint_val)) or np.any(np.isinf(constraint_val)):
+            raise ValueError("Constraint function returned NaN or Inf.")
+
+        if np.all(constraint_val <= epsilon):
+            # PRODUCTIVE STEP: use target function gradient.
+            F.append(fx + h.extra_Psi(x))
+
+            if linesearch:
+                try:
+                    x_new, L_candidate = productive_line_search(x, fx, grad_fx, L_prod/2)
+                except RuntimeError as e:
+                    print("Line search failed at iteration", k)
+                    raise e
+                L_prod = L_candidate
+            else:
+                x_new = h.div_prox_map(x, grad_fx, L_prod)
+            
+            productive_count += 1
+            prod_step_size = L_prod**-1
+            step_size_prod_sum += prod_step_size
+            x = x_new
+            Ls[k] = prod_step_size
+        else:
+            # UNPRODUCTIVE STEP: use the gradient of the constraint function.
+            grad_g = cnstrnt_fun.gradient(x)
+            # Here, we take an ordinary gradient step using the constraint gradient.
+            # A projection (here, using np.maximum) keeps x well-behaved.
+            unprod_step = 1e-1 * np.linalg.norm(grad_g)**-2
+            x = x - grad_g * unprod_step
+            x = np.maximum(x, 1e-6)
+            step_size_unprod_sum += unprod_step
+            Ls[k] = 0.0
+        
+        # Estimate the Lagrange multiplier.
+        if step_size_prod_sum > 0 and step_size_unprod_sum > 0:
+            lagrange_multiplier = step_size_unprod_sum / step_size_prod_sum
+        else:
+            lagrange_multiplier = 1.0
+        
+        # Compute the real duality gap:
+        # d(z) = max_{y in Q} { -f(y) - z_vec^T cnstrnt_fun(y) }
+        # Then gap(x) = f(x) + d(z)
+        dual_val, _ = compute_dual_value(lagrange_multiplier, f, cnstrnt_fun, x)
+        duality_gaps[k] = fx + dual_val
+        
+        if verbose and k % verbskip == 0 and productive_count > 0:
+            elapsed = time.time() - start_time
+            print(f"{k:6d}  {F[-1]:.3e}  {Ls[k]:.3e}  {duality_gaps[k]:.3e}  {elapsed:.2f}s")
+        
+        # Stopping criterion: stop if the real duality gap becomes sufficiently small.
+        if k > 0 and abs(duality_gaps[k]) < 1e-6:
+            if verbose:
+                print("Stopping criterion reached at iteration", k)
+            F = F[:k+1]
+            duality_gaps = duality_gaps[:k+1]
+            Ls = Ls[:k+1]
+            return F, duality_gaps, Ls
+        
+    print(f"Unprod steps is {(k - productive_count):n}  and prod is {productive_count:n}")
+    Fs = np.array(F)
+    duality_gaps = duality_gaps[:maxitrs]
+    return Fs, duality_gaps, Ls[:maxitrs]
+ 

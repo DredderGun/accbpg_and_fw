@@ -2,8 +2,6 @@ import os.path
 import numpy as np
 import scipy.sparse as sparse
 
-import pandas as pd
-
 
 def _open_file(filename):
 
@@ -157,32 +155,6 @@ def load_sido(filename):
     return X, y
 
 
-def generate_random_value_in_df(DF, conditions_ser, num_new_cols):
-    # Generate random DataFrame new_values
-    np.random.seed(0)  # for reproducibility
-
-    # Initialize B_values with the same shape as DF
-    new_values = np.random.randint(90, 101, size=(360, num_new_cols))
-
-    # Replace values based on condition
-    mask = conditions_ser.values == -1
-    indices_to_replace = np.where(mask)
-    num_values_to_replace = indices_to_replace[0].shape[0]
-
-    # Generate random values for elements with -1 in Y
-    replacement_values = np.random.randint(60, 80, size=(num_values_to_replace, num_new_cols))
-
-    # Replace corresponding values in B_values
-    new_values[indices_to_replace[0]] = replacement_values
-
-    # Create DataFrame B
-    new_columns = [f"pixel_{i}" for i in range(num_new_cols)]
-    df_to_add = pd.DataFrame(new_values, columns=new_columns)
-
-    # Concatenate new_df to the right side of DF
-    return pd.concat([DF.reset_index(drop=True), df_to_add], axis=1)
-
-
 def generate_dataset_for_svm(m, n):
     """
     Get normal distributed dataset with condition labels
@@ -263,11 +235,11 @@ def edge_point_on_simplex(edge_index, n, radius=1, tol=1e-5):
     return x
 
 
-def get_random_float(range=1):
-    if range == 0:
+def get_random_float(var=1):
+    if var == 0:
         return 0
-    assert range > 0, 'The range must be positive.'
-    val = range * np.random.random_sample()
+    assert var > 0, 'The range must be positive.'
+    val = var * np.random.random_sample()
     # val = np.random.normal(range, range / 2, None)
     assert val > 0
     return val
