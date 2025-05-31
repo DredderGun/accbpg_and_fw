@@ -3,6 +3,7 @@
 
 
 from .functions import *
+from .functions_lmo import *
 from .algorithms import (BPG, ABPG, ABPG_expo, ABPG_gain, ABDA, AIBM, AdaptFGM, 
                          UniversalGM, PrimalDualSwitchingGradientMethod)
 from .algorithms_fw import (FW_alg_div_step, FW_alg_descent_step, FW_alg_div_step_adapt)
