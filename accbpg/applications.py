@@ -322,18 +322,78 @@ def svm_digits_ds_divs_ball(center=None, lamda=0.5, real_ds=False):
     return f, [poly_h, sqL2_h], L, x0, radius
 
 
-def FrobeniusSymLossEx(M, r, noise):
-    X0 = np.random.rand(M.shape[0], r)
-    upper_bound = 5
-    assert np.all(X0 >= 0) >= 0, "X0 must be non-negative"
-    f = FrobeniusSymLoss(M, X0)
-    # h = SumOf2nd4thPowers(6, 2*np.linalg.norm(M, 2))
-    h = SumOf2nd4thPowersPositiveOrthant(6, 2*np.linalg.norm(M, 2), upper_bound)
-    h_dual = SumOf2nd4thPowersDualProxMap(6, 2*np.linalg.norm(M, 2))
-    h_fw = SumOf2nd4thPowersWithFrankWolfe(6, 2*np.linalg.norm(M, 2), lmo_matrix_box(0, upper_bound))
-    L = 1
+def FrobeniusSymLossExL2Ball(n, r, ball_center, radius=1.0, on_boundary=True):
+    rows = cols = n
 
-    return f, [h, h_dual, h_fw], L, X0
+    X = np.random.randn(n, r)
+    X /= np.linalg.norm(X, axis=1, keepdims=True)
+
+    if on_boundary:
+        X *= radius
+    else:
+        # Sample inside L2 ball uniformly
+        scales = np.random.uniform(0, 1, size=(n, 1)) ** (1 / r) # степень для того, чтобы слишком далеко точку не ставил
+        X *= radius * scales
+    X += ball_center
+
+    assert np.all(X >= 0), "X must be non-negative"
+    distances_l2_ball = np.linalg.norm(X - ball_center, axis=1)
+    if on_boundary:
+        assert np.all(np.abs(distances_l2_ball - radius) < 1e-6), "Some points are not on L2 ball boundary"
+    else:
+        assert np.all(distances_l2_ball <= radius + 1e-6), "Some points lie outside the L2 ball"
+
+    approx_matrix = X.dot(X.T)
+    assert np.allclose(approx_matrix, approx_matrix.T), "matrix must be symmetric"
+    assert np.all(approx_matrix >= 0), "approx_matrix must be non-negative"
+    assert approx_matrix.shape[0] == approx_matrix.shape[1], "approx_matrix must be square"
+    
+    X0 = np.ones((rows, r)) * radius + 1e-5 * radius
+    assert np.all(X0 >= 0), "X0 must be non-negative"
+
+    f = FrobeniusSymLoss(approx_matrix, X0)
+    L=1
+    alpha=6
+    sigma=2*np.linalg.norm(approx_matrix, 2)
+
+    h = SumOf2nd4thPowers(alpha, sigma)
+
+    return f, h, L, X0, approx_matrix
+
+
+def FrobeniusSymLossExLInfBall(n, r, ball_center, radius=1.0, on_boundary=True):
+    X = np.random.randn(n, r)
+    X /= np.max(np.abs(X))  # normalize max entry to 1
+
+    if on_boundary:
+        X *= radius
+    else:
+        X *= radius * np.random.uniform(0, 1)
+    X += ball_center
+
+    assert np.all(X >= 0), "X must be non-negative"
+    distances_linf_ball = np.max(np.abs(X - ball_center))
+
+    if on_boundary:
+        assert np.abs(distances_linf_ball - radius) <= 1e-6, "X is not on L∞ ball boundary"
+    else:
+        assert distances_linf_ball <= radius + 1e-6, "X is outside the L∞ ball"
+
+    approx_matrix = X @ X.T
+    assert np.allclose(approx_matrix, approx_matrix.T), "approx_matrix must be symmetric"
+    assert np.all(approx_matrix >= 0), "approx_matrix must be non-negative"
+
+    X0 = np.ones((n, r)) * radius + 1e-5 * radius
+    assert np.all(X0 >= 0), "X0 must be non-negative"
+    assert np.max(np.abs(X0 - ball_center)) < radius
+
+    f = FrobeniusSymLoss(approx_matrix, X0)
+    L = 1
+    alpha = 6
+    sigma = 2 * np.linalg.norm(approx_matrix, 2)
+    h = SumOf2nd4thPowers(alpha, sigma)
+
+    return f, h, L, X0, approx_matrix
 
 
 def FrobeniusSymLossResMeasEx(M, r, noise=0.0):

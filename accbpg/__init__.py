@@ -10,8 +10,8 @@ from .algorithms_fw import (FW_alg_div_step, FW_alg_descent_step, FW_alg_div_ste
 from .applications import (D_opt_libsvm, D_opt_design, D_opt_KYinit,
                            Poisson_regrL1, Poisson_regrL2, KL_nonneg_regr,
                            Poisson_regr_simplex, Poisson_regr_simplex_acc,
-                           svm_digits_ds_divs_ball, FrobeniusSymLossEx, FrobeniusSymLossExWithLinearCnstrnts,
-                           FrobeniusSymLossResMeasEx)
+                           svm_digits_ds_divs_ball, FrobeniusSymLossExL2Ball, FrobeniusSymLossExWithLinearCnstrnts,
+                           FrobeniusSymLossResMeasEx, FrobeniusSymLossExLInfBall)
 from .D_opt_alg import D_opt_FW, D_opt_FW_away
 from .trianglescaling import plotTSE, plotTSE0
 from .plotfigs import plot_comparisons

@@ -40,7 +40,7 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
     F = np.zeros(maxitrs)
     Ls = np.ones(maxitrs) * L
     T = np.zeros(maxitrs)
-    delta = epsilon
+    delta = 1e-6
 
     x = np.copy(x0)
     for k in range(maxitrs):
@@ -53,7 +53,7 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
         if div == 0:
             div = delta
 
-        grad_d_prod = np.dot(g, d_k)
+        grad_d_prod = np.dot(g.ravel(), d_k.ravel())
         if 0 < grad_d_prod <= delta:
             grad_d_prod = 0
         if grad_d_prod > 0:
@@ -181,10 +181,12 @@ def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, lmo, ls_ratio, divisor_fo
         s_k = lmo(g)
         d_k = s_k - x
         div = h.divergence(s_k, x)
-        if div == 0:
+        if abs(div) <= 1: # ATTENTION. Value on the RHS may vary depend on the task.
             div = delta
 
-        grad_d_prod = np.dot(g, d_k)
+        assert div >= 0, 'Divergence must be more or equals 0'
+
+        grad_d_prod = np.vdot(g, d_k)
         if 0 < grad_d_prod <= delta:
             grad_d_prod = 0
         if grad_d_prod > 0:

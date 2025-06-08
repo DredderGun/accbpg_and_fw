@@ -515,7 +515,7 @@ class SumOf2nd4thPowers(LegendreFunction):
     def divergence(self, x, y):
         assert x.shape == y.shape, "Bregman div: x and y not same shape."
         return self.__call__(x) - (self.__call__(y)
-                                   + np.vdot(self.gradient(y), x-y))
+                                   + np.sum(self.gradient(y) * (x - y)))
 
     def solve_cubic(self, c, alpha):
         """
@@ -968,15 +968,6 @@ class FrobeniusSymLoss(RSmoothFunction):
         # return both function value and gradient
         f = self.frobenius_sym_loss(X)
         return f, g + noise_vector
-
-    def grad_snmf(self, M: np.ndarray, A: np.ndarray) -> np.ndarray:
-        """
-        Computes the gradient of the SNMF objective function
-            0.5 * ||M - A @ A.T||^2
-        """
-        MA = M @ A
-        AAtA = A @ (A.T @ A)  # Order is important for efficiency
-        return 2 * (AAtA - MA)
 
     def div_prox_map(self, y, g, L):
         """

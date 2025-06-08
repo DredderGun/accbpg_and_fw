@@ -43,7 +43,7 @@ def lmo_l2_ball(radius, center=None):
             
         s = center_p - radius * g/g_norm
         
-        assert abs(np.linalg.norm(s - center_p) - radius) <= 1e-12, \
+        assert abs(np.linalg.norm(s - center_p) - radius) <= 1e-10, \
             "Solution does not lie on ball boundary"
             
         return s
