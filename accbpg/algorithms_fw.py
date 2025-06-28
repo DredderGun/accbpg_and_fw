@@ -130,7 +130,9 @@ def FW_alg_descent_step(f, h, x0, maxitrs, lmo, epsilon=1e-14, verbose=True, ver
     return x, F, T, G
 
 
-def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, lmo, ls_ratio, divisor_for_tse, epsilon=1e-14, linesearch=True, verbose=True, verbskip=1):
+def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, lmo, ls_ratio, 
+                          divisor_for_tse, change_tse_each_n=2, epsilon=1e-14, linesearch=True, 
+                          verbose=True, verbskip=1):
     """
     Frank-Wolfe's algorithm with the Bregman divergence
 
@@ -196,6 +198,7 @@ def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, lmo, ls_ratio, divisor_fo
             L = L / ls_ratio
             gamma = min(gamma + divisor_for_tse * (gamma - 1), 2.0)
             
+        adapt_iter = 1
         while True:
             assert gamma > 1, "gamma must be greater than 1 for the algorithm to work"
             assert L > 0, "L must be positive for the algorithm to work"
@@ -208,12 +211,14 @@ def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, lmo, ls_ratio, divisor_fo
                 
             if f.func_grad(x1, flag=0) <= fx + alpha_k * grad_d_prod + alpha_k ** gamma * L * div:
                 break
-            elif alpha_k > 0.2:
+            elif adapt_iter % change_tse_each_n != 0:
                 L = L * ls_ratio
             elif gamma == gamma_min:
                 raise ValueError("gamma has reached its minimum value, cannot continue line search")
             else:
                 gamma = max(1 + (gamma - 1) / divisor_for_tse, gamma_min)
+            
+            adapt_iter += 1
 
         x = x1
         x[x == 0] = delta
