@@ -130,7 +130,7 @@ def FW_alg_descent_step(f, h, x0, maxitrs, lmo, epsilon=1e-14, verbose=True, ver
     return x, F, T, G
 
 
-def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, lmo, ls_ratio, 
+def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, gamma_max, lmo, ls_ratio, 
                           divisor_for_tse, change_tse_each_n=2, epsilon=1e-14, linesearch=True, 
                           verbose=True, verbskip=1):
     """
@@ -147,12 +147,14 @@ def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, lmo, ls_ratio,
         ls_ratio: backtracking line search parameter >= 1
         verbose:  display computational progress (True or False)
         verbskip: number of iterations to skip between displays
+        gamma_max: maximum value for gamma
 
     Returns:
         x: Final solution vector
         F: Array of function values at each iteration
         Ls: Array of L values at each iteration 
         T: Array of cumulative computation times
+        Gammas: Array of gamma values at each iteration
     """
     if ls_ratio < 1:
         raise ValueError("ls_ratio must be >= 1")
@@ -162,6 +164,8 @@ def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, lmo, ls_ratio,
         raise ValueError("gamma must be greater than 1")
     if epsilon <= 0:
         raise ValueError("epsilon must be positive")
+    if gamma_max <= 1:
+        raise ValueError("gamma_max must be greater than 1")
 
     if verbose:
         print("\nFW full adaptive algorithm")
@@ -196,7 +200,7 @@ def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, lmo, ls_ratio,
 
         if linesearch:
             L = L / ls_ratio
-            gamma = min(gamma + divisor_for_tse * (gamma - 1), 2.0)
+            gamma = min(gamma + divisor_for_tse * (gamma - 1), gamma_max)
             
         adapt_iter = 1
         while True:
@@ -217,6 +221,7 @@ def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, lmo, ls_ratio,
                 raise ValueError("gamma has reached its minimum value, cannot continue line search")
             else:
                 gamma = max(1 + (gamma - 1) / divisor_for_tse, gamma_min)
+                gamma = min(gamma, gamma_max)
             
             adapt_iter += 1
 
