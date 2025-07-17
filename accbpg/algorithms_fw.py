@@ -75,7 +75,7 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
             L = L * ls_ratio
 
         x = x1
-        x[x == 0] = delta
+        # x[x == 0] = delta
 
         Ls[k] = L
         if verbose and k % verbskip == 0:
@@ -226,7 +226,7 @@ def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, gamma_max, lmo, ls_ratio,
             adapt_iter += 1
 
         x = x1
-        x[x == 0] = delta
+        # x[x == 0] = delta
 
         Ls[k] = L
         Gammas[k] = gamma
@@ -241,4 +241,129 @@ def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, gamma_max, lmo, ls_ratio,
     Gammas = Gammas[0:k + 1]
     T = T[0:k + 1]
     return x, F, Ls, T, Gammas
+
+
+def FW_alg_l0_l1_step_adapt(f, h, L0, L1, x0, maxitrs, lmo, ls_ratio, epsilon=1e-14, 
+                            linesearch=True, verbose=True, verbskip=50):
+    """
+    Adaptive Frank-Wolfe algorithm for functions, satisfying the (L0, L1)-smoothness condition:
+        ||∇^2 f(y)|| ≤ (L0 + L1 * ||∇f(y)||)
+
+    Parameters:
+        f: object with method `func_grad(x)` returning (f(x), ∇f(x))
+        h: LegendreFunction instance representing the kernel h(x)
+        L0: initial estimate for L0 smoothness parameter
+        L1: initial estimate for L1 smoothness parameter
+        x0: starting point (numpy array)
+        maxitrs: maximum number of iterations
+        lmo: linear minimization oracle returning argmin_{s in C} <g, s>
+        ls_ratio: backtracking scaling factor (must be >= 1)
+        epsilon: stopping threshold for function value changes
+        linesearch: whether to perform adaptive step size selection
+        verbose: whether to print progress every `verbskip` iterations
+        verbskip: iteration skip between verbose logs
+
+    Returns:
+        x: final iterate
+        F: function values (f + Psi) per iteration
+        Ls: values of a_k (i.e., L0 + L1 * ||∇f||) per iteration
+        LOG_STEPS: accumulated log-steps if alpha chosen via log expression
+        T: cumulative time in seconds per iteration
+    """
+
+    if ls_ratio < 1:
+        raise ValueError("ls_ratio must be >= 1")
+
+    if L0 <= 0 or L1 <= 0:
+        raise ValueError("Initial L0 and L1 must be positive")
+    
+    if epsilon <= 0:
+        raise ValueError("epsilon must be positive")
+
+    if verbose:
+        print("\nFW L0,L1 smooth algorithm")
+        print("     k      F(x)         L        log step count       time")
+
+    start_time = time.time()
+
+    F = np.zeros(maxitrs)
+    Ls = np.zeros(maxitrs)
+    T = np.zeros(maxitrs)
+    LOG_STEPS = np.zeros(maxitrs, dtype=int)
+
+    delta = 1e-8
+    x = np.copy(x0)
+
+    for k in range(maxitrs):
+        fx, g = f.func_grad(x)
+        gx_norm = np.linalg.norm(g)
+
+        F[k] = fx + h.extra_Psi(x)
+        T[k] = time.time() - start_time
+
+        s_k = lmo(g)
+        d_k = s_k - x
+        d_norm = np.linalg.norm(d_k)
+
+        grad_d_prod = np.vdot(g, d_k)
+        if 0 < grad_d_prod <= delta:
+            grad_d_prod = 0
+        if grad_d_prod > 0:
+            raise ValueError("grad_d_prod must be non-positive (we minimize)")
+
+        a_k = L0 + L1 * gx_norm
+
+        if linesearch:
+            L0 /= ls_ratio
+            L1 /= ls_ratio
+
+        while True:
+            assert L0 >= 0 and L1 >= 0, "Smoothness parameters must stay positive"
+
+            if L1 * d_norm >= np.log(2):
+                alpha_k = (1 / (L1 * d_norm)) * np.log(1 + (L1 * (-grad_d_prod)) / (a_k * d_norm))
+                if k > 0:
+                    LOG_STEPS[k] = LOG_STEPS[k - 1] + 1
+                else:
+                    LOG_STEPS[k] = 1
+            else:
+                alpha_k = (min(1.5, L1 * d_norm) * (-grad_d_prod)) / (d_norm**2 * a_k)
+                LOG_STEPS[k] = LOG_STEPS[k - 1]
+
+            x1 = x + alpha_k * d_k
+
+            if not linesearch:
+                break
+
+            fx1, g1 = f.func_grad(x1)
+            a_next = L0 + L1 * np.linalg.norm(g1)
+
+            grad_subtraction = np.linalg.norm(g1 - g)
+
+            # conj_arg = L1 * np.linalg.norm(g1 - g) / a_next
+            # if fx1 >= fx + alpha_k * np.vdot(g, d_k) + a_next / L1**2 * ((1 + conj_arg) * np.log(1 + conj_arg) - conj_arg):
+            if fx1 >= fx + alpha_k * np.vdot(g, d_k) + grad_subtraction**2 / (2*a_next + L1 * grad_subtraction):
+                break
+            else:
+                L0 *= ls_ratio
+                L1 *= ls_ratio
+                a_k = L0 + L1 * gx_norm  # update after L changes
+
+        x = x1
+        # x[x == 0] = delta  # avoid zero entries for numerical safety
+
+        Ls[k] = a_k
+
+        if verbose and k % verbskip == 0:
+            print(f"{k:6d}   {F[k]:10.3e}   {Ls[k]:10.3e}   {LOG_STEPS[k]:6d}      {T[k]:6.1f}")
+
+        if k > 0 and abs(F[k] - F[k - 1]) < epsilon:
+            break
+
+    F = F[:k + 1]
+    Ls = Ls[:k + 1]
+    LOG_STEPS = LOG_STEPS[:k + 1]
+    T = T[:k + 1]
+
+    return x, F, Ls, LOG_STEPS, T
 

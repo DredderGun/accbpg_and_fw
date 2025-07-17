@@ -189,7 +189,7 @@ def generate_dataset_for_svm(m, n):
     return data, labels
 
 
-def random_point_in_l2_ball(center, radius, pos_dir=False):
+def random_point_in_l2_ball(center, radius, spread_btm=0.1, spread_up=0.99, pos_dir=False):
     # Generate a random point on the unit sphere
     ndim = len(center)
     random_direction = np.random.randn(ndim)
@@ -199,7 +199,7 @@ def random_point_in_l2_ball(center, radius, pos_dir=False):
         random_direction = np.sign(random_direction) * random_direction
 
     # Generate a random radius within the given ball's radius
-    random_radius = np.random.uniform(radius*0.9, radius*0.99)
+    random_radius = np.random.uniform(radius*spread_btm, radius*spread_up)
 
     # Scale the random point by the random radius
     random_point = center + random_radius * random_direction

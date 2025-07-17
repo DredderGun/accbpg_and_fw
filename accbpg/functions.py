@@ -2,6 +2,9 @@
 # Licensed under the MIT License.
 import numpy as np
 import cvxpy as cp
+import jax
+import jax.numpy as jnp
+from functools import partial
 
 
 class RSmoothFunction:
@@ -1060,6 +1063,44 @@ class AX_b(RSmoothFunction):
             return g
         
         f = self.A.dot(X) - self.b
+        return f, g
+    
+
+class LogisticRegression(RSmoothFunction):
+    def __init__(self, X, y, alpha=0.01):
+        jax.config.update("jax_enable_x64", True)
+
+        self.X = X
+        self.y = y
+        self.alpha = alpha
+
+        def loss_fn(omega):
+            z = self.y * jnp.dot(self.X, omega)
+            loss = jax.nn.softplus(-z)  # log(1 + exp(-yXw))
+            # reg = 0.5 * self.alpha * jnp.sum(omega ** 2)
+            return jnp.mean(loss)
+
+        self._f = jax.jit(loss_fn)
+        self._grad = jax.jit(jax.grad(loss_fn))
+        self._hess = jax.jit(jax.hessian(loss_fn))
+
+    def f(self, omega):
+        return self._f(omega)
+
+    def gradient(self, omega):
+        return self._grad(omega)
+    
+    def func_grad(self, omega, flag=2):
+        if flag == 0:
+            f = self.f(omega)
+            return f
+        
+        g = self.gradient(omega)
+
+        if flag == 1:
+            return g
+        
+        f = self.f(omega)
         return f, g
     
 
