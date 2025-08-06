@@ -296,13 +296,13 @@ def FW_alg_l0_l1_step_adapt(
             assert L0 >= 0 and L1 >= 0, "Smoothness parameters must stay positive"
 
             if L1 * d_norm >= np.log(2):
-                alpha_k = (1 / (L1 * d_norm)) * np.log(1 + (L1 * (-grad_d_prod)) / (a_k * d_norm))
+                alpha_k = (1 / (L1 * d_norm)) * np.log(1 - (L1 * grad_d_prod) / (a_k * d_norm))
                 if k > 0:
                     LOG_STEPS[k] = LOG_STEPS[k - 1] + 1
                 else:
                     LOG_STEPS[k] = 1
             else:
-                alpha_k = (L1 * (-grad_d_prod)) / (d_norm * a_k)
+                alpha_k = min(0.75, L1) * (-grad_d_prod) / (a_k * d_norm)
                 LOG_STEPS[k] = LOG_STEPS[k - 1]
 
             x1 = x + alpha_k * d_k
