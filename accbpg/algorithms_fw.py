@@ -1,5 +1,6 @@
 import numpy as np
 import time
+import math
 
 
 def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=True, ls_ratio=2,
@@ -286,14 +287,14 @@ def FW_alg_l0_l1_step_adapt(
         if grad_d_prod > 0:
             raise ValueError("grad_d_prod must be non-positive (we minimize)")
 
-        a_k = L0 + L1 * gx_norm
-
         if linesearch:
             L0 /= ls_ratio
             L1 /= ls_ratio
 
         while True:
             assert L0 >= 0 and L1 >= 0, "Smoothness parameters must stay positive"
+
+            a_k = L0 + L1 * gx_norm
 
             if L1 * d_norm >= np.log(2):
                 alpha_k = (1 / (L1 * d_norm)) * np.log(1 - (L1 * grad_d_prod) / (a_k * d_norm))
@@ -302,7 +303,7 @@ def FW_alg_l0_l1_step_adapt(
                 else:
                     LOG_STEPS[k] = 1
             else:
-                alpha_k = min(0.75, L1) * (-grad_d_prod) / (a_k * d_norm)
+                alpha_k = L1 * (-grad_d_prod) / (a_k * d_norm)
                 LOG_STEPS[k] = LOG_STEPS[k - 1]
 
             x1 = x + alpha_k * d_k
@@ -342,3 +343,107 @@ def FW_alg_l0_l1_step_adapt(
     T = T[: k + 1]
 
     return x, F, Ls, LOG_STEPS, T
+
+
+def FW_alg_l0_l1_fixed_l1(
+    f, h, L0, L1, x0, maxitrs, lmo, ls_ratio, epsilon=1e-14, 
+    L0_max=None, L1_max=None, linesearch=True, verbose=True, 
+    verbskip=50,
+):
+    if ls_ratio < 1:
+        raise ValueError("ls_ratio must be >= 1")
+    if L0 <= 0 or L1 <= 0:
+        raise ValueError("Initial L0 and L1 must be positive")
+    if epsilon <= 0:
+        raise ValueError("epsilon must be positive")
+
+    if verbose:
+        print("\nFW L0,L1 smooth algorithm")
+        print("     k      F(x)         L         L0         L1     log step count       time")
+
+    start_time = time.time()
+
+    F = np.zeros(maxitrs)
+    Ls = np.zeros(maxitrs)
+    T = np.zeros(maxitrs)
+    LOG_STEPS = np.zeros(maxitrs, dtype=int)
+
+    delta = 1e-8
+    x = np.copy(x0)
+
+    for k in range(maxitrs):
+        fx, g = f.func_grad(x)
+        gx_norm = np.linalg.norm(g)
+
+        F[k] = fx + h.extra_Psi(x)
+        T[k] = time.time() - start_time
+
+        s_k = lmo(g)
+        d_k = s_k - x
+        d_norm = np.linalg.norm(d_k)
+
+        grad_d_prod = np.vdot(g, d_k)
+        if 0 < grad_d_prod <= delta:
+            grad_d_prod = 0
+        if grad_d_prod > 0:
+            raise ValueError("grad_d_prod must be non-positive (we minimize)")
+
+        if linesearch:
+            L0 /= ls_ratio
+            L1 /= ls_ratio
+
+        L1 = max(math.log(2) / d_norm, L1)
+
+        while True:
+            assert L0 >= 0 and L1 >= 0, "Smoothness parameters must stay positive"
+
+            a_k = L0 + L1 * gx_norm
+
+            z = L1 * d_norm
+            if z >= math.log(2) - 1e-5:
+                alpha_k = (1 / (L1 * d_norm)) * math.log(1 - (L1 * grad_d_prod) / (a_k * d_norm))
+                if k > 0:
+                    LOG_STEPS[k] = LOG_STEPS[k - 1] + 1
+                else:
+                    LOG_STEPS[k] = 1
+            else:
+                assert False, "No use for the second step!"
+
+            x1 = x + alpha_k * d_k
+
+            if not linesearch:
+                break
+
+            fx1 = f.func_grad(x1, flag=0)
+
+            z = L1 * alpha_k * d_norm
+            if z < 50:  # Safe zone for accurate exponential evaluation
+                exp_term = np.expm1(z) - z
+            else:
+                # Use a safe upper bound approximation (e.g., quadratic growth)
+                exp_term = 0.5 * z**2  # upper bound: exp(z) - z - 1 <= 0.5 * z^2 for large z
+
+            rhs = fx + alpha_k * grad_d_prod + (a_k / L1**2) * exp_term
+            if fx1 <= rhs:
+                break
+            else:
+                L0 = min(L0 * ls_ratio, L0_max) if L0_max else L0 * ls_ratio
+                L1 = min(L1 * ls_ratio, L1_max) if L1_max else L1 * ls_ratio
+                a_k = L0 + L1 * gx_norm
+
+        x = x1
+        Ls[k] = a_k
+
+        if verbose and k % verbskip == 0:
+            print(f"{k:6d}   {F[k]:10.3e}   {Ls[k]:10.3e}   {L0:10.3e}   {L1:10.3e}   {LOG_STEPS[k]:6d}      {T[k]:6.1f}")
+
+        if k > 0 and abs(F[k] - F[k - 1]) < epsilon:
+            break
+
+    F = F[: k + 1]
+    Ls = Ls[: k + 1]
+    LOG_STEPS = LOG_STEPS[: k + 1]
+    T = T[: k + 1]
+
+    return x, F, Ls, LOG_STEPS, T
+
