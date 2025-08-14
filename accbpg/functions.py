@@ -1066,23 +1066,28 @@ class AX_b(RSmoothFunction):
         return f, g
     
 
+import jax
+import jax.numpy as jnp
+
 class LogisticRegression(RSmoothFunction):
     def __init__(self, X, y, alpha=0.01):
+        # Enable double precision (set once in your script ideally)
         jax.config.update("jax_enable_x64", True)
 
         self.X = X
         self.y = y
         self.alpha = alpha
 
-        def loss_fn(omega):
-            z = self.y * jnp.dot(self.X, omega)
+        @jax.jit
+        def loss_fn(omega, X, y):
+            z = y * (X @ omega)
             loss = jax.nn.softplus(-z)  # log(1 + exp(-yXw))
-            # reg = 0.5 * self.alpha * jnp.sum(omega ** 2)
             return jnp.mean(loss)
 
-        self._f = jax.jit(loss_fn)
-        self._grad = jax.jit(jax.grad(loss_fn))
-        self._hess = jax.jit(jax.hessian(loss_fn))
+        # Store jitted versions with data closed in
+        self._f = jax.jit(lambda omega: loss_fn(omega, self.X, self.y))
+        self._grad = jax.jit(jax.grad(lambda omega: loss_fn(omega, self.X, self.y)))
+        self._hess = jax.jit(jax.hessian(lambda omega: loss_fn(omega, self.X, self.y)))
 
     def f(self, omega):
         return self._f(omega)
@@ -1092,8 +1097,7 @@ class LogisticRegression(RSmoothFunction):
     
     def func_grad(self, omega, flag=2):
         if flag == 0:
-            f = self.f(omega)
-            return f
+            return self.f(omega)
         
         g = self.gradient(omega)
 

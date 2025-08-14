@@ -3,29 +3,20 @@ import time
 import math
 
 
-def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=True, ls_ratio=2,
-                    verbose=True, verbskip=1):
-    """
-    Frank-Wolfe's algorithm with the Bregman divergence
+import jax
+import jax.numpy as jnp
+import time
 
-    Inputs:
-        f, h, L:  f is L-smooth relative to h, and Psi is defined within h
-        x0:       initial point to start algorithm
-        maxitrs:  maximum number of iterations
-        gamma:    triangle scaling exponent (TSE) for Bregman distance D_h(x,y)
-        lmo:      linear minimization oracle
-        epsilon:  stop if D_h(z[k],z[k-1]) < epsilon
-        linesearch:  whether or not perform line search (True or False)
-        ls_ratio: backtracking line search parameter >= 1
-        verbose:  display computational progress (True or False)
-        verbskip: number of iterations to skip between displays
 
-    Returns:
-        x: Final solution vector
-        F: Array of function values at each iteration
-        Ls: Array of L values at each iteration 
-        T: Array of cumulative computation times
+def FW_alg_div_step(
+    f, h, L, x0, maxitrs, gamma, lmo,
+    epsilon=1e-14, linesearch=True, ls_ratio=2,
+    verbose=True, verbskip=1
+):
     """
+    Frank-Wolfe's algorithm with the Bregman divergence (JAX version)
+    """
+
     if ls_ratio < 1:
         raise ValueError("ls_ratio must be >= 1")
     if L <= 0:
@@ -38,57 +29,57 @@ def FW_alg_div_step(f, h, L, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=
         print("     k      F(x)         Lk       time")
 
     start_time = time.time()
-    F = np.zeros(maxitrs)
-    Ls = np.ones(maxitrs) * L
-    T = np.zeros(maxitrs)
+    F = jnp.zeros(maxitrs)
+    Ls = jnp.ones(maxitrs) * L
+    T = jnp.zeros(maxitrs)
     delta = 1e-6
 
-    x = np.copy(x0)
+    x = jnp.copy(x0)
+
     for k in range(maxitrs):
         fx, g = f.func_grad(x)
-        F[k] = fx + h.extra_Psi(x)
-        T[k] = time.time() - start_time
+        F = F.at[k].set(fx + h.extra_Psi(x))
+        T = T.at[k].set(time.time() - start_time)
+
         s_k = lmo(g)
         d_k = s_k - x
         div = h.divergence(s_k, x)
-        if div == 0:
-            div = delta
+        div = jnp.where(div == 0, delta, div)
 
-        grad_d_prod = np.dot(g.ravel(), d_k.ravel())
-        if 0 < grad_d_prod <= delta:
-            grad_d_prod = 0
+        grad_d_prod = jnp.dot(g.ravel(), d_k.ravel())
+        grad_d_prod = jnp.where((0 < grad_d_prod) & (grad_d_prod <= delta), 0.0, grad_d_prod)
+
         if grad_d_prod > 0:
             raise ValueError("grad_d_prod must be non-positive")
 
         if linesearch:
             L = L / ls_ratio
-            
+
         while True:
-            alpha_k = min((-grad_d_prod / (2 * L * div)) ** (1 / (gamma - 1)), 1)
+            alpha_k = jnp.minimum(
+                (-grad_d_prod / (2 * L * div)) ** (1 / (gamma - 1)),
+                1.0
+            )
             x1 = x + alpha_k * d_k
-            
+
             if not linesearch:
                 break
-                
+
             if f.func_grad(x1, flag=0) <= fx + alpha_k * grad_d_prod + alpha_k ** gamma * L * div:
                 break
 
             L = L * ls_ratio
 
         x = x1
-        # x[x == 0] = delta
+        Ls = Ls.at[k].set(L)
 
-        Ls[k] = L
         if verbose and k % verbskip == 0:
-            print(f"{k:6d}  {F[k]:10.3e}  {L:10.3e}  {T[k]:6.1f}")
+            print(f"{k:6d}  {float(F[k]):10.3e}  {float(L):10.3e}  {float(T[k]):6.1f}")
 
-        if k > 0 and abs(F[k] - F[k - 1]) < epsilon:
+        if k > 0 and jnp.abs(F[k] - F[k - 1]) < epsilon:
             break
 
-    F = F[0:k + 1]
-    Ls = Ls[0:k + 1]
-    T = T[0:k + 1]
-    return x, F, Ls, T
+    return x, F[:k+1], Ls[:k+1], T[:k+1]
 
 
 def FW_alg_descent_step(f, h, x0, maxitrs, lmo, epsilon=1e-14, verbose=True, verbskip=1):
@@ -244,7 +235,7 @@ def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, gamma_max, lmo, ls_ratio,
     return x, F, Ls, T, Gammas
 
 
-def FW_alg_l0_l1_step_adapt(
+def FW_alg_l0_l1_log_step(
     f, h, L0, L1, x0, maxitrs, lmo, ls_ratio, epsilon=1e-14, 
     L0_max=None, L1_max=None, linesearch=True, verbose=True, 
     verbskip=50,
@@ -257,31 +248,31 @@ def FW_alg_l0_l1_step_adapt(
         raise ValueError("epsilon must be positive")
 
     if verbose:
-        print("\nFW L0,L1 smooth algorithm")
+        print("\nFW L0,L1 smooth logarithmic algorithm")
         print("     k      F(x)         L         L0         L1     log step count       time")
 
     start_time = time.time()
 
-    F = np.zeros(maxitrs)
-    Ls = np.zeros(maxitrs)
-    T = np.zeros(maxitrs)
-    LOG_STEPS = np.zeros(maxitrs, dtype=int)
+    F = jnp.zeros(maxitrs)
+    Ls = jnp.zeros(maxitrs)
+    T = jnp.zeros(maxitrs)
+    LOG_STEPS = jnp.zeros(maxitrs, dtype=int)
 
     delta = 1e-8
-    x = np.copy(x0)
+    x = jnp.copy(x0)
 
     for k in range(maxitrs):
         fx, g = f.func_grad(x)
-        gx_norm = np.linalg.norm(g)
+        gx_norm = jnp.linalg.norm(g)
 
-        F[k] = fx + h.extra_Psi(x)
-        T[k] = time.time() - start_time
+        F = F.at[k].set(fx + h.extra_Psi(x))
+        T = T.at[k].set(time.time() - start_time)
 
         s_k = lmo(g)
         d_k = s_k - x
-        d_norm = np.linalg.norm(d_k)
+        d_norm = jnp.linalg.norm(d_k)
 
-        grad_d_prod = np.vdot(g, d_k)
+        grad_d_prod = jnp.vdot(g, d_k)
         if 0 < grad_d_prod <= delta:
             grad_d_prod = 0
         if grad_d_prod > 0:
@@ -296,15 +287,15 @@ def FW_alg_l0_l1_step_adapt(
 
             a_k = L0 + L1 * gx_norm
 
-            if L1 * d_norm >= np.log(2):
-                alpha_k = (1 / (L1 * d_norm)) * np.log(1 - (L1 * grad_d_prod) / (a_k * d_norm))
+            if L1 * d_norm >= jnp.log(2):
+                alpha_k = (1 / (L1 * d_norm)) * jnp.log(1 - (L1 * grad_d_prod) / (a_k * d_norm))
                 if k > 0:
-                    LOG_STEPS[k] = LOG_STEPS[k - 1] + 1
+                    LOG_STEPS = LOG_STEPS.at[k].set(fx + h.extra_Psi(x))
                 else:
-                    LOG_STEPS[k] = 1
+                    LOG_STEPS = LOG_STEPS.at[k].set(1)
             else:
                 alpha_k = L1 * (-grad_d_prod) / (a_k * d_norm)
-                LOG_STEPS[k] = LOG_STEPS[k - 1]
+                LOG_STEPS = LOG_STEPS.at[k].set(LOG_STEPS[k - 1])
 
             x1 = x + alpha_k * d_k
 
@@ -315,7 +306,7 @@ def FW_alg_l0_l1_step_adapt(
 
             z = L1 * alpha_k * d_norm
             if z < 50:  # Safe zone for accurate exponential evaluation
-                exp_term = np.expm1(z) - z
+                exp_term = jnp.expm1(z) - z
             else:
                 # Use a safe upper bound approximation (e.g., quadratic growth)
                 exp_term = 0.5 * z**2  # upper bound: exp(z) - z - 1 <= 0.5 * z^2 for large z
@@ -329,7 +320,7 @@ def FW_alg_l0_l1_step_adapt(
                 a_k = L0 + L1 * gx_norm
 
         x = x1
-        Ls[k] = a_k
+        Ls = Ls.at[k].set(a_k)
 
         if verbose and k % verbskip == 0:
             print(f"{k:6d}   {F[k]:10.3e}   {Ls[k]:10.3e}   {L0:10.3e}   {L1:10.3e}   {LOG_STEPS[k]:6d}      {T[k]:6.1f}")
@@ -337,12 +328,7 @@ def FW_alg_l0_l1_step_adapt(
         if k > 0 and abs(F[k] - F[k - 1]) < epsilon:
             break
 
-    F = F[: k + 1]
-    Ls = Ls[: k + 1]
-    LOG_STEPS = LOG_STEPS[: k + 1]
-    T = T[: k + 1]
-
-    return x, F, Ls, LOG_STEPS, T
+    return x, F[: k + 1], Ls[: k + 1], LOG_STEPS[: k + 1], T[: k + 1]
 
 
 def FW_alg_l0_l1_fixed_l1(
@@ -446,4 +432,92 @@ def FW_alg_l0_l1_fixed_l1(
     T = T[: k + 1]
 
     return x, F, Ls, LOG_STEPS, T
+
+
+def FW_alg_L0_L1_step(f, h, L0, L1, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=True, ls_ratio=2,
+                    verbose=True, verbskip=1):
+    """
+    Frank-Wolfe's algorithm with the Bregman divergence
+
+    Inputs:
+        f, h, L:  f is L-smooth relative to h, and Psi is defined within h
+        x0:       initial point to start algorithm
+        maxitrs:  maximum number of iterations
+        gamma:    triangle scaling exponent (TSE) for Bregman distance D_h(x,y)
+        lmo:      linear minimization oracle
+        epsilon:  stop if D_h(z[k],z[k-1]) < epsilon
+        linesearch:  whether or not perform line search (True or False)
+        ls_ratio: backtracking line search parameter >= 1
+        verbose:  display computational progress (True or False)
+        verbskip: number of iterations to skip between displays
+
+    Returns:
+        x: Final solution vector
+        F: Array of function values at each iteration
+        Ls: Array of L values at each iteration 
+        T: Array of cumulative computation times
+    """
+    if ls_ratio < 1:
+        raise ValueError("ls_ratio must be >= 1")
+    if L0 < 0 or L1 < 0:
+        raise ValueError("Initial L must be positive")
+    if epsilon <= 0:
+        raise ValueError("epsilon must be positive")
+
+    if verbose:
+        print("\nFW L0,L1 smooth algorithm")
+        print("     k      F(x)         L           L0              L1     step-size     time")
+
+    start_time = time.time()
+    F = jnp.zeros(maxitrs)
+    Ls = jnp.ones(maxitrs) * 1
+    T = jnp.zeros(maxitrs)
+    delta = 1e-6
+
+    x = jnp.copy(x0)
+    for k in range(maxitrs):
+        fx, g = f.func_grad(x)
+        F = F.at[k].set(fx + h.extra_Psi(x))
+        T = T.at[k].set(time.time() - start_time)
+        s_k = lmo(g)
+        d_k = s_k - x
+        div = h.divergence(s_k, x)
+        if div == 0:
+            div = delta
+
+        grad_d_prod = jnp.dot(g.ravel(), d_k.ravel())
+        if 0 < grad_d_prod <= delta:
+            grad_d_prod = 0
+        if grad_d_prod > 0:
+            raise ValueError("grad_d_prod must be non-positive")
+
+        if linesearch:
+            L0 = L0 / ls_ratio
+            L1 = L1 / ls_ratio
+
+        g_norm = jnp.linalg.norm(g)
+        while True:
+            a_k = L0 + L1 * g_norm
+            alpha_k = min((-grad_d_prod / (a_k * div * math.e)) ** (1 / (gamma - 1)), 1)
+            x1 = x + alpha_k * d_k
+
+            if not linesearch:
+                break
+                
+            if f.func_grad(x1, flag=0) <= fx + alpha_k * grad_d_prod + alpha_k ** gamma * (a_k / 2) * math.e * div:
+                break
+
+            L0 = L0 * ls_ratio
+            L1 = L1 * ls_ratio
+
+        x = x1
+
+        Ls = Ls.at[k].set(a_k)
+        if verbose and k % verbskip == 0:
+            print(f"{k:6d}   {F[k]:10.3e}   {Ls[k]:10.3e}    {L0:10.3e}      {L1:10.3e}       {alpha_k:10.3e}     {T[k]:6.1f}")
+
+        if k > 0 and abs(F[k] - F[k - 1]) < epsilon:
+            break
+
+    return x, F[0:k + 1], Ls[0:k + 1], T[0:k + 1]
 

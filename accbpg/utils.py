@@ -2,6 +2,9 @@ import os.path
 import numpy as np
 import scipy.sparse as sparse
 
+import jax
+import jax.numpy as jnp
+
 
 def _open_file(filename):
 
@@ -205,6 +208,43 @@ def random_point_in_l2_ball(center, radius, spread_btm=0.1, spread_up=0.99, pos_
     random_point = center + random_radius * random_direction
 
     assert np.linalg.norm(random_point - center) - radius <= 1e-15
+
+    return random_point
+
+def random_point_in_l2_ball_jax_version(
+    center,
+    radius,
+    spread_btm=0.1,
+    spread_up=0.99,
+    pos_dir=False,
+    key=None
+):
+    assert key is not None, "You must pass a JAX PRNG key"
+
+    ndim = center.shape[0]
+
+    # Split keys for direction and radius
+    key_dir, key_radius = jax.random.split(key)
+
+    # Generate a random direction on the unit sphere
+    random_direction = jax.random.normal(key_dir, shape=(ndim,))
+    random_direction = random_direction / jnp.linalg.norm(random_direction)
+
+    if pos_dir:
+        random_direction = jnp.sign(random_direction) * random_direction
+
+    # Random radius in [radius*spread_btm, radius*spread_up]
+    random_radius = jax.random.uniform(
+        key_radius,
+        minval=radius * spread_btm,
+        maxval=radius * spread_up
+    )
+
+    # Scale and shift
+    random_point = center + random_radius * random_direction
+
+    # Numerical tolerance check
+    assert jnp.linalg.norm(random_point - center) - radius <= 1e-15
 
     return random_point
 

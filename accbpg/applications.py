@@ -1,12 +1,15 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 import numpy as np
+import jax
+import jax.numpy as jnp
 from sklearn.datasets import load_svmlight_file
 from sklearn.preprocessing import StandardScaler
+from jax.scipy.linalg import cholesky
 
 from .functions import *
 from .utils import load_libsvm_file, random_point_on_simplex, random_point_in_l2_ball, \
-    edge_point_on_simplex, generate_dataset_for_svm
+    edge_point_on_simplex, generate_dataset_for_svm, random_point_in_l2_ball_jax_version
 
 from sklearn.datasets import load_digits
 
@@ -426,62 +429,65 @@ def FrobeniusSymLossExWithLinearCnstrnts(M, r, noise=0):
     return f, g, h, L, X0
 
 
-def L0L1_FW_log_reg(n_samples, n_features, ball_constrnt_radius, solution_spread_radius_btm=0.91, solution_spread_radius_up=0.96, noise=0):
-    """
-    Generate a random instance of L1-regularized KL regression problem
-            minimize_{x >= 0}  D_KL(Ax, b) + lamda * ||x||_1
-    where 
-        A:  m by n nonnegative matrix
-        b:  nonnegative vector of length m
-        noise:  noise level to generate b = A * x + noise
-        lambda: L2 regularization weight
-        normalizeA: wether or not to normalize columns of A
-    
-    Return f, h, L, x0: 
-        f: f(x) = D_KL(Ax, b)
-        h: h(x) = Shannon entropy (with L1 regularization as Psi)
-        L: L = max(sum(A, axis=0)), maximum column sum
-        x0: initial point, scaled version of all-one vector
-    """
-    rng = np.random.default_rng(seed=None)
+def toeplitz_matrix(n_features, rho):
+    idx = jnp.arange(n_features)
+    return rho ** jnp.abs(idx[:, None] - idx[None, :])
 
-    # x0 = rng.random(n_features)
-    x0 = np.zeros(n_features) + 1e-6 # главное, чтобы точка лежала внутри множества, остальное не особо влияет на производительность
 
-    assert np.linalg.norm(x0, 2) <= ball_constrnt_radius, "x0 must lie inside l2 ball"
-    assert np.linalg.norm(x0, np.inf) <= ball_constrnt_radius, "x0 must lie inside l_inf ball"
+def L0L1_FW_log_reg(
+    key,
+    n_samples,
+    n_features,
+    ball_constrnt_radius,
+    solution_spread_radius_btm=0.91,
+    solution_spread_radius_up=0.96,
+    noise=0.0,
+    rho=0.98  # correlation parameter for Toeplitz
+):
+    key, key_X, key_noise, key_omega = jax.random.split(key, 4)
 
-    # Generate random features
-    X = rng.normal(size=(n_samples, n_features))
+    x0 = jnp.zeros(n_features) + 1e-6
+    assert jnp.linalg.norm(x0, 2) <= ball_constrnt_radius
+    assert jnp.linalg.norm(x0, jnp.inf) <= ball_constrnt_radius
 
-    # Generate a random weight vector
-    true_omega = random_point_in_l2_ball(np.zeros(n_features), ball_constrnt_radius, 
-                                         spread_btm=solution_spread_radius_btm, 
-                                         spread_up=solution_spread_radius_up)
-    # true_omega = rng.random(n_features)
-    # true_omega = rng.normal(loc=0.0, scale=1.0, size=n_features)
+    # --- Toeplitz covariance ---
+    Sigma = toeplitz_matrix(n_features, rho)
+    chol_Sigma = cholesky(Sigma, lower=True)
 
-    print('radius is ', ball_constrnt_radius)
-    print('true omega radius is ', np.linalg.norm(true_omega, 2))
+    # Correlated Gaussian features: Z ~ N(0, I), X = Z * L^T
+    Z = jax.random.normal(key_X, shape=(n_samples, n_features))
+    X = Z @ chol_Sigma.T
 
-    assert np.linalg.norm(true_omega, 2) <= ball_constrnt_radius, "x0 must lie inside l2 ball"
-    assert np.linalg.norm(true_omega, np.inf) <= ball_constrnt_radius, "x0 must lie inside l_inf ball"
+    # --- Random weight vector ---
+    true_omega = random_point_in_l2_ball_jax_version(
+        jnp.zeros(n_features),
+        ball_constrnt_radius,
+        spread_btm=solution_spread_radius_btm,
+        spread_up=solution_spread_radius_up,
+        key=key_omega
+    )
 
-    # Generate noisy logits and labels
-    logits = X @ true_omega + 0.1 * rng.normal(size=n_samples)
-    y = np.sign(logits)
+    print("radius is", ball_constrnt_radius)
+    print("true omega radius is", float(jnp.linalg.norm(true_omega, 2)))
 
-    # Ensure labels are in {-1, 1}
-    y[y == 0] = 1
+    assert jnp.linalg.norm(true_omega, 2) <= ball_constrnt_radius
+    assert jnp.linalg.norm(true_omega, jnp.inf) <= ball_constrnt_radius
 
-    print('ratio positive labels:', y[y == 1].shape[0] / y.shape[0])
+    # --- Labels with noise ---
+    logits = X @ true_omega + noise * jax.random.normal(key_noise, shape=(n_samples,))
+    y = jnp.sign(logits)
+    y = jnp.where(y == 0, 1, y)
+
+    pos_ratio = jnp.sum(y == 1) / y.shape[0]
+    print("ratio positive labels:", float(pos_ratio))
 
     f = LogisticRegression(X, y)
     h = SquaredL2Norm()
-    
-    L = np.max(np.linalg.norm(X, axis=1))**2
+
+    row_norms = jnp.linalg.norm(X, axis=1)
+    L = jnp.max(row_norms) ** 2
     L0 = 1e-9
-    L1 = np.max(np.linalg.norm(X, axis=1))
+    L1 = jnp.max(row_norms)
 
     return f, h, L, L0, L1, x0
 
