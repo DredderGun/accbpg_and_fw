@@ -458,6 +458,9 @@ def L0L1_FW_log_reg(
     Z = jax.random.normal(key_X, shape=(n_samples, n_features))
     X = Z @ chol_Sigma.T
 
+    multiplier_coef = 3
+    X = X * (multiplier_coef ** jnp.arange(X.shape[1])[None, :])  # scale rows to increase spread
+
     # --- Random weight vector ---
     true_omega = random_point_in_l2_ball_jax_version(
         jnp.zeros(n_features),
