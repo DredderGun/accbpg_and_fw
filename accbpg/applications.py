@@ -444,6 +444,10 @@ def L0L1_FW_log_reg(
     noise=0.0,
     rho=0.98  # correlation parameter for Toeplitz
 ):
+    """
+    Устаревшая версия функции для генерации задачи логистической регрессии.
+    hard_FW_log_reg_jax - новая версия.
+    """
     key, key_X, key_noise, key_omega = jax.random.split(key, 4)
 
     x0 = jnp.zeros(n_features) + 1e-6
@@ -493,6 +497,97 @@ def L0L1_FW_log_reg(
     L1 = jnp.max(row_norms)
 
     return f, h, L, L0, L1, x0
+
+
+def hard_FW_log_reg_jax(
+    key,
+    n_samples,
+    n_features,
+    radius=1.0,
+    domain="l1",        # "l2", "l1", "linf", "simplex"
+    k_sparse=5,
+    rho=0.95,
+    col_scale=10.0, # if 1.0, then no scaling
+    flip_y=0.0,
+    margin=0.5,
+    class_bias=0.0,
+    x0_mode="center",
+    noise=0.01
+):
+    # Split RNG keys
+    key, key_X, key_true, key_noise, key_flip = jax.random.split(key, 5)
+
+    # --- Toeplitz covariance ---
+    Sigma = toeplitz_matrix(n_features, rho)
+    chol_Sigma = cholesky(Sigma, lower=True)
+
+    # Z ~ N(0, I)
+    Z = jax.random.normal(key_X, shape=(n_samples, n_features))
+    # Correlated Gaussian: X = Z L^T
+    X = Z @ chol_Sigma.T
+
+    # Column scaling with large dynamic range
+    scales = col_scale ** jnp.linspace(0, 1, n_features)
+    X = X * scales[None, :]
+
+    # --- Generate true_omega ---
+    if domain in ("l1", "simplex"):
+        true_omega = jnp.zeros(n_features)
+        supp = jax.random.choice(key_true, n_features, shape=(min(k_sparse, n_features),), replace=False)
+        vals = jax.random.uniform(key_true, shape=(supp.shape[0],), minval=0.5, maxval=1.0)
+        vals = vals / jnp.sum(jnp.abs(vals)) * radius
+        true_omega = true_omega.at[supp].set(vals)
+
+        if domain == "simplex":
+            true_omega = jnp.abs(true_omega)
+            true_omega = true_omega / jnp.sum(true_omega) * radius
+
+    elif domain == "linf":
+        signs = jax.random.choice(key_true, jnp.array([-1.0, 1.0]), shape=(n_features,))
+        true_omega = signs * radius
+
+    else:  # l2
+        v = jax.random.normal(key_true, shape=(n_features,))
+        v = v / (jnp.linalg.norm(v, 2) + 1e-12)
+        true_omega = radius * v
+
+    # --- Labels ---
+    logits = margin * (X @ true_omega) + class_bias
+    y = jnp.sign(logits + noise * jax.random.normal(key_noise, shape=(n_samples,)))
+
+    if flip_y > 0:
+        flip_mask = jax.random.uniform(key_flip, shape=(n_samples,)) < flip_y
+        y = jnp.where(flip_mask, -y, y)
+
+    y = jnp.where(y == 0, 1, y)
+
+    # --- Choose x0 ---
+    if domain in ("l1", "simplex"):
+        if x0_mode == "center":
+            x0 = jnp.zeros(n_features)
+        else:
+            v = jnp.zeros(n_features)
+            idx_vertex = jax.random.randint(key_true, (), 0, n_features)
+            v = v.at[idx_vertex].set(radius)
+            if domain == "simplex":
+                v = v / jnp.sum(v) * radius
+            x0 = v
+    elif domain == "linf":
+        x0 = jnp.zeros(n_features)
+    else:  # l2
+        x0 = jnp.zeros(n_features)
+
+    # --- Smoothness parameters ---
+    row_norms = jnp.linalg.norm(X, axis=1)
+    L = jnp.max(row_norms) ** 2
+    L1 = jnp.max(row_norms)
+    L0 = 1e-12
+
+    # Build your loss functions here
+    f = LogisticRegression(X, y)
+    h = SquaredL2Norm()
+
+    return f, h, L, L0, L1, x0, X, y
 
 
 def load_a9a_data(path, bias=True):

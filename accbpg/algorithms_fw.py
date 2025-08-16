@@ -29,9 +29,9 @@ def FW_alg_div_step(
         print("     k      F(x)         Lk       time")
 
     start_time = time.time()
-    F = jnp.zeros(maxitrs)
-    Ls = jnp.ones(maxitrs) * L
-    T = jnp.zeros(maxitrs)
+    F = jnp.zeros(maxitrs, dtype=jnp.float64)
+    Ls = jnp.ones(maxitrs, dtype=jnp.float64)
+    T = jnp.zeros(maxitrs, dtype=jnp.float64)
     delta = 1e-6
 
     x = jnp.copy(x0)
@@ -253,9 +253,9 @@ def FW_alg_l0_l1_log_step(
 
     start_time = time.time()
 
-    F = jnp.zeros(maxitrs)
-    Ls = jnp.zeros(maxitrs)
-    T = jnp.zeros(maxitrs)
+    F = jnp.zeros(maxitrs, dtype=jnp.float64)
+    Ls = jnp.ones(maxitrs, dtype=jnp.float64)
+    T = jnp.zeros(maxitrs, dtype=jnp.float64)
     LOG_STEPS = jnp.zeros(maxitrs, dtype=int)
 
     delta = 1e-8
@@ -290,7 +290,7 @@ def FW_alg_l0_l1_log_step(
             if L1 * d_norm >= jnp.log(2):
                 alpha_k = (1 / (L1 * d_norm)) * jnp.log(1 - (L1 * grad_d_prod) / (a_k * d_norm))
                 if k > 0:
-                    LOG_STEPS = LOG_STEPS.at[k].set(fx + h.extra_Psi(x))
+                    LOG_STEPS = LOG_STEPS.at[k].set(LOG_STEPS[k - 1] + 1)
                 else:
                     LOG_STEPS = LOG_STEPS.at[k].set(1)
             else:
@@ -469,9 +469,9 @@ def FW_alg_L0_L1_step(f, h, L0, L1, x0, maxitrs, gamma, lmo, epsilon=1e-14, line
         print("     k      F(x)         L           L0              L1     step-size     time")
 
     start_time = time.time()
-    F = jnp.zeros(maxitrs)
-    Ls = jnp.ones(maxitrs) * 1
-    T = jnp.zeros(maxitrs)
+    F = jnp.zeros(maxitrs, dtype=jnp.float64)
+    Ls = jnp.ones(maxitrs, dtype=jnp.float64) * 1.0
+    T = jnp.zeros(maxitrs, dtype=jnp.float64)
     delta = 1e-6
 
     x = jnp.copy(x0)
