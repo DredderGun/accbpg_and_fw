@@ -1066,9 +1066,6 @@ class AX_b(RSmoothFunction):
         return f, g
     
 
-import jax
-import jax.numpy as jnp
-
 class LogisticRegression(RSmoothFunction):
     def __init__(self, X, y, alpha=0.01):
         # Enable double precision (set once in your script ideally)

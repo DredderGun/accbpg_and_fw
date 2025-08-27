@@ -344,7 +344,7 @@ def FW_alg_l0_l1_fixed_l1(
         raise ValueError("epsilon must be positive")
 
     if verbose:
-        print("\nFW L0,L1 smooth algorithm")
+        print("\nFW L0,L1 smooth algorithm with fixed L1")
         print("     k      F(x)         L         L0         L1     log step count       time")
 
     start_time = time.time()
@@ -355,6 +355,7 @@ def FW_alg_l0_l1_fixed_l1(
     LOG_STEPS = np.zeros(maxitrs, dtype=int)
 
     delta = 1e-8
+    toggle = 0
     x = np.copy(x0)
 
     for k in range(maxitrs):
@@ -413,8 +414,12 @@ def FW_alg_l0_l1_fixed_l1(
             if fx1 <= rhs:
                 break
             else:
-                L0 = min(L0 * ls_ratio, L0_max) if L0_max else L0 * ls_ratio
-                L1 = min(L1 * ls_ratio, L1_max) if L1_max else L1 * ls_ratio
+                if toggle == 0:
+                    L0 = min(L0 * ls_ratio, L0_max) if L0_max else L0 * ls_ratio
+                    toggle = 1
+                else:
+                    L1 = min(L1 * ls_ratio, L1_max) if L1_max else L1 * ls_ratio
+                    toggle = 0
                 a_k = L0 + L1 * gx_norm
 
         x = x1
@@ -473,6 +478,7 @@ def FW_alg_L0_L1_step(f, h, L0, L1, x0, maxitrs, gamma, lmo, epsilon=1e-14, line
     Ls = jnp.ones(maxitrs, dtype=jnp.float64) * 1.0
     T = jnp.zeros(maxitrs, dtype=jnp.float64)
     delta = 1e-6
+    toggle = 0
 
     x = jnp.copy(x0)
     for k in range(maxitrs):
@@ -507,8 +513,12 @@ def FW_alg_L0_L1_step(f, h, L0, L1, x0, maxitrs, gamma, lmo, epsilon=1e-14, line
             if f.func_grad(x1, flag=0) <= fx + alpha_k * grad_d_prod + alpha_k ** gamma * (a_k / 2) * math.e * div:
                 break
 
-            L0 = L0 * ls_ratio
-            L1 = L1 * ls_ratio
+            if toggle == 0:
+                L0 = L0 * ls_ratio
+                toggle = 1
+            else:
+                L1 = L1 * ls_ratio
+                toggle = 0
 
         x = x1
 
