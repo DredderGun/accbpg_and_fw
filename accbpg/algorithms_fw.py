@@ -81,6 +81,133 @@ def FW_alg_div_step(
 
     return x, F[:k+1], Ls[:k+1], T[:k+1]
 
+def FW_alg_L0_L1_shortest_step(
+    f, h, L0, L1, x0, maxitrs, gamma, lmo, epsilon=1e-14,
+    linesearch=True, ls_ratio=2, verbose=True, verbskip=1
+):
+    """
+    Frank-Wolfe algorithm for (L0, L1)-smooth functions with shortest-step rule.
+
+    This routine minimizes a composite objective of the form
+
+        F(x) = f(x) + h.extra_Psi(x),
+
+    where `f` is (L0, L1)-smooth. The step-size (this is quite similar to the classic shortest-step rule):
+
+        alpha_k = min( [ -<∇f(x), d> / (a_k * D(s, x) * e) ]^(1 / (γ - 1)), 1 ),
+
+    where `d = s - x`, `s` is returned by the Linear Minimization Oracle (LMO),
+    `D(s, x)` is a divergence measure provided by `h`, `a_k = L0 + L1 * ||∇f(x)||`,
+    and `γ > 1` is a curvature parameter.
+
+    Parameters
+    ----------
+    f : object
+        Target function.
+    h : object with a convex penalty term.
+    L0 : float
+        Initial zero-order smoothness parameter (must be nonnegative).
+    L1 : float
+        Initial first-order smoothness parameter (must be nonnegative).
+    x0 : ndarray
+        Initial feasible point.
+    maxitrs : int
+        Maximum number of iterations.
+    gamma : float
+        Exponent in the shortest-step rule, must satisfy `γ > 1`.
+    lmo : callable
+        Linear Minimization Oracle (LMO).
+    epsilon : float, optional (default=1e-14)
+        Stopping tolerance on successive objective values.
+    linesearch : bool, optional (default=True)
+        Whether to use line search or not.
+    ls_ratio : float, optional (default=2)
+        Factor by which `(L0, L1)` are scaled during line search. Must be >= 1.
+    verbose : bool, optional (default=True)
+        If True, prints progress information.
+    verbskip : int, optional (default=1)
+        Frequency (in iterations) of verbose output.
+
+    Returns
+    -------
+    x : ndarray
+        Final iterate.
+    F : ndarray
+        Array of objective values across iterations.
+    Ls : ndarray
+        Sequence of smoothness constants `a_k = L0 + L1 * ||∇f(x)||`.
+    T : ndarray
+        Cumulative runtime (in seconds) at each iteration.
+    """
+    if ls_ratio < 1:
+        raise ValueError("ls_ratio must be >= 1")
+    if L0 < 0 or L1 < 0:
+        raise ValueError("Initial L must be positive")
+    if epsilon <= 0:
+        raise ValueError("epsilon must be positive")
+
+    if verbose:
+        print("\nFW L0,L1 smooth algorithm")
+        print("     k      F(x)         L           L0              L1     step-size     time")
+
+    start_time = time.time()
+    F = jnp.zeros(maxitrs, dtype=jnp.float64)
+    Ls = jnp.ones(maxitrs, dtype=jnp.float64) * 1.0
+    T = jnp.zeros(maxitrs, dtype=jnp.float64)
+    delta = 1e-6
+    toggle = 0
+
+    x = jnp.copy(x0)
+    for k in range(maxitrs):
+        fx, g = f.func_grad(x)
+        F = F.at[k].set(fx + h.extra_Psi(x))
+        T = T.at[k].set(time.time() - start_time)
+        s_k = lmo(g)
+        d_k = s_k - x
+        div = h.divergence(s_k, x)
+        if div == 0:
+            div = delta
+
+        grad_d_prod = jnp.dot(g.ravel(), d_k.ravel())
+        if 0 < grad_d_prod <= delta:
+            grad_d_prod = 0
+        if grad_d_prod > 0:
+            raise ValueError("grad_d_prod must be non-positive")
+
+        if linesearch:
+            L0 = L0 / ls_ratio
+            L1 = L1 / ls_ratio
+
+        g_norm = jnp.linalg.norm(g)
+        while True:
+            a_k = L0 + L1 * g_norm
+            alpha_k = min((-grad_d_prod / (a_k * div * math.e)) ** (1 / (gamma - 1)), 1)
+            x1 = x + alpha_k * d_k
+
+            if not linesearch:
+                break
+                
+            if f.func_grad(x1, flag=0) <= fx + alpha_k * grad_d_prod + alpha_k ** gamma * (a_k / 2) * math.e * div:
+                break
+
+            if toggle == 0:
+                L0 = L0 * ls_ratio
+                toggle = 1
+            else:
+                L1 = L1 * ls_ratio
+                toggle = 0
+
+        x = x1
+
+        Ls = Ls.at[k].set(a_k)
+        if verbose and k % verbskip == 0:
+            print(f"{k:6d}   {F[k]:10.3e}   {Ls[k]:10.3e}    {L0:10.3e}      {L1:10.3e}       {alpha_k:10.3e}     {T[k]:6.1f}")
+
+        if k > 0 and abs(F[k] - F[k - 1]) < epsilon:
+            break
+
+    return x, F[0:k + 1], Ls[0:k + 1], T[0:k + 1]
+
 
 def FW_alg_descent_step(f, h, x0, maxitrs, lmo, epsilon=1e-14, verbose=True, verbskip=1):
     if verbose:
@@ -235,11 +362,65 @@ def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, gamma_max, lmo, ls_ratio,
     return x, F, Ls, T, Gammas
 
 
-def FW_alg_l0_l1_log_step(
+def FW_l0l1_log_and_linear_step(
     f, h, L0, L1, x0, maxitrs, lmo, ls_ratio, epsilon=1e-14, 
     L0_max=None, L1_max=None, linesearch=True, verbose=True, 
     verbskip=50,
 ):
+    """
+    The step-size rule is logarithmic when `L1 * ||d_k|| \geq ln2` is large, and
+      $L_1 (- \nabla f(x_k)^\top d_k) / (L_0 + L_1 \| \nabla f(x_k) \|) \| d_k \|$ otherwise.
+
+    This routine minimizes a composite objective of the form
+
+        F(x) = f(x) + h.extra_Psi(x),
+
+    where `f` is (L0, L1)-smooth (relative smoothness model).
+
+    Parameters
+    ----------
+    f : object
+        Target function.
+    h : object
+        Regularizer with method `extra_Psi(x)` returning a convex penalty term.
+    L0 : float
+        Initial zero-order smoothness parameter (must be positive).
+    L1 : float
+        Initial first-order smoothness parameter (must be positive).
+    x0 : ndarray
+        Initial feasible point.
+    maxitrs : int
+        Maximum number of iterations.
+    lmo : callable
+        Linear Minimization Oracle (LMO).
+    ls_ratio : float
+        Factor by which (L0, L1) are increased during line search. Must be >= 1.
+    epsilon : float, optional (default=1e-14)
+        Stopping tolerance on successive objective values.
+    L0_max : float, optional
+        Upper bound for L0 during line search. If None, no upper bound is enforced.
+    L1_max : float, optional
+        Upper bound for L1 during line search. If None, no upper bound is enforced.
+    linesearch : bool, optional (default=True)
+        Whether to use line search to adjust smoothness parameters.
+    verbose : bool, optional (default=True)
+        If True, prints progress information.
+    verbskip : int, optional (default=50)
+        Frequency (in iterations) of verbose output.
+
+    Returns
+    -------
+    x : ndarray
+        Final iterate.
+    F : ndarray
+        Array of objective values across iterations.
+    Ls : ndarray
+        Sequence of smoothness constants `a_k = L0 + L1 * ||∇f(x)||`.
+    LOG_STEPS : ndarray
+        Count of logarithmic step-size updates per iteration.
+    T : ndarray
+        Cumulative runtime (in seconds) at each iteration.
+    """
     if ls_ratio < 1:
         raise ValueError("ls_ratio must be >= 1")
     if L0 <= 0 or L1 <= 0:
@@ -331,11 +512,69 @@ def FW_alg_l0_l1_log_step(
     return x, F[: k + 1], Ls[: k + 1], LOG_STEPS[: k + 1], T[: k + 1]
 
 
-def FW_alg_l0_l1_fixed_l1(
+def FW_l0l1_log_only(
     f, h, L0, L1, x0, maxitrs, lmo, ls_ratio, epsilon=1e-14, 
     L0_max=None, L1_max=None, linesearch=True, verbose=True, 
     verbskip=50,
 ):
+    """
+    Frank-Wolfe algorithm for (L0, L1)-smooth functions with log only step size.
+    Here `L1` is adaptively set to satisfy `L1 >= log(2) / ||d_k||` to ensure log only step size
+    at each iteratoin.
+
+    This routine minimizes a composite objective of the form
+
+        F(x) = f(x) + h.extra_Psi(x),
+
+    where `f` is (L0, L1)-smooth (relative smoothness model).
+
+    Parameters
+    ----------
+    f : object
+        Target function.
+    h : object
+        Regularizer with method `extra_Psi(x)` returning a convex penalty term.
+    L0 : float
+        Initial zero-order smoothness parameter (must be positive).
+    L1 : float
+        Initial first-order smoothness parameter (must be positive).
+        This value is dynamically adjusted but never drops below
+        `log(2) / ||d_k||` at each iteration.
+    x0 : ndarray
+        Initial feasible point.
+    maxitrs : int
+        Maximum number of iterations.
+    lmo : callable
+        Linear Minimization Oracle (LMO).
+    ls_ratio : float
+        Factor by which (L0, L1) are increased during line search. Must be >= 1.
+    epsilon : float, optional (default=1e-14)
+        Stopping tolerance on successive objective values.
+    L0_max : float, optional
+        Upper bound for L0 during line search. If None, no upper bound is enforced.
+    L1_max : float, optional
+        Upper bound for L1 during line search. If None, no upper bound is enforced.
+    linesearch : bool, optional (default=True)
+        Whether to use line search to adjust smoothness parameters.
+        Line search alternates between updating L0 and L1 when backtracking fails.
+    verbose : bool, optional (default=True)
+        If True, prints progress information.
+    verbskip : int, optional (default=50)
+        Frequency (in iterations) of verbose output.
+
+    Returns
+    -------
+    x : ndarray
+        Final iterate.
+    F : ndarray
+        Array of objective values across iterations.
+    Ls : ndarray
+        Sequence of smoothness constants `a_k = L0 + L1 * ||∇f(x)||`.
+    LOG_STEPS : ndarray
+        Count of logarithmic step-size updates per iteration.
+    T : ndarray
+        Cumulative runtime (in seconds) at each iteration.
+    """
     if ls_ratio < 1:
         raise ValueError("ls_ratio must be >= 1")
     if L0 <= 0 or L1 <= 0:
@@ -437,97 +676,3 @@ def FW_alg_l0_l1_fixed_l1(
     T = T[: k + 1]
 
     return x, F, Ls, LOG_STEPS, T
-
-
-def FW_alg_L0_L1_step(f, h, L0, L1, x0, maxitrs, gamma, lmo, epsilon=1e-14, linesearch=True, ls_ratio=2,
-                    verbose=True, verbskip=1):
-    """
-    Frank-Wolfe's algorithm with the Bregman divergence
-
-    Inputs:
-        f, h, L:  f is L-smooth relative to h, and Psi is defined within h
-        x0:       initial point to start algorithm
-        maxitrs:  maximum number of iterations
-        gamma:    triangle scaling exponent (TSE) for Bregman distance D_h(x,y)
-        lmo:      linear minimization oracle
-        epsilon:  stop if D_h(z[k],z[k-1]) < epsilon
-        linesearch:  whether or not perform line search (True or False)
-        ls_ratio: backtracking line search parameter >= 1
-        verbose:  display computational progress (True or False)
-        verbskip: number of iterations to skip between displays
-
-    Returns:
-        x: Final solution vector
-        F: Array of function values at each iteration
-        Ls: Array of L values at each iteration 
-        T: Array of cumulative computation times
-    """
-    if ls_ratio < 1:
-        raise ValueError("ls_ratio must be >= 1")
-    if L0 < 0 or L1 < 0:
-        raise ValueError("Initial L must be positive")
-    if epsilon <= 0:
-        raise ValueError("epsilon must be positive")
-
-    if verbose:
-        print("\nFW L0,L1 smooth algorithm")
-        print("     k      F(x)         L           L0              L1     step-size     time")
-
-    start_time = time.time()
-    F = jnp.zeros(maxitrs, dtype=jnp.float64)
-    Ls = jnp.ones(maxitrs, dtype=jnp.float64) * 1.0
-    T = jnp.zeros(maxitrs, dtype=jnp.float64)
-    delta = 1e-6
-    toggle = 0
-
-    x = jnp.copy(x0)
-    for k in range(maxitrs):
-        fx, g = f.func_grad(x)
-        F = F.at[k].set(fx + h.extra_Psi(x))
-        T = T.at[k].set(time.time() - start_time)
-        s_k = lmo(g)
-        d_k = s_k - x
-        div = h.divergence(s_k, x)
-        if div == 0:
-            div = delta
-
-        grad_d_prod = jnp.dot(g.ravel(), d_k.ravel())
-        if 0 < grad_d_prod <= delta:
-            grad_d_prod = 0
-        if grad_d_prod > 0:
-            raise ValueError("grad_d_prod must be non-positive")
-
-        if linesearch:
-            L0 = L0 / ls_ratio
-            L1 = L1 / ls_ratio
-
-        g_norm = jnp.linalg.norm(g)
-        while True:
-            a_k = L0 + L1 * g_norm
-            alpha_k = min((-grad_d_prod / (a_k * div * math.e)) ** (1 / (gamma - 1)), 1)
-            x1 = x + alpha_k * d_k
-
-            if not linesearch:
-                break
-                
-            if f.func_grad(x1, flag=0) <= fx + alpha_k * grad_d_prod + alpha_k ** gamma * (a_k / 2) * math.e * div:
-                break
-
-            if toggle == 0:
-                L0 = L0 * ls_ratio
-                toggle = 1
-            else:
-                L1 = L1 * ls_ratio
-                toggle = 0
-
-        x = x1
-
-        Ls = Ls.at[k].set(a_k)
-        if verbose and k % verbskip == 0:
-            print(f"{k:6d}   {F[k]:10.3e}   {Ls[k]:10.3e}    {L0:10.3e}      {L1:10.3e}       {alpha_k:10.3e}     {T[k]:6.1f}")
-
-        if k > 0 and abs(F[k] - F[k - 1]) < epsilon:
-            break
-
-    return x, F[0:k + 1], Ls[0:k + 1], T[0:k + 1]
-

@@ -507,13 +507,80 @@ def hard_FW_log_reg_jax(
     domain="l1",        # "l2", "l1", "linf", "simplex"
     k_sparse=5,
     rho=0.95,
-    col_scale=10.0, # if 1.0, then no scaling
+    col_scale=10.0,
     flip_y=0.0,
     margin=0.5,
     class_bias=0.0,
     x0_mode="center",
     noise=0.01
 ):
+    """
+    Generate a synthetic logistic regression problem suitable for testing 
+    Frank–Wolfe–type algorithms in constrained domains.
+
+    The function constructs a correlated Gaussian design matrix, a ground-truth 
+    parameter vector constrained to a specified domain (L1, L2, L∞, or simplex), 
+    and noisy binary labels. It also returns smoothness parameters and an initial 
+    point for optimization.
+
+    Parameters
+    ----------
+    key : jax.random.PRNGKey
+        Random number generator key.
+    n_samples : int
+        Number of training samples.
+    n_features : int
+        Number of features.
+    radius : float, default=1.0
+        Radius of the feasible domain (norm constraint).
+    domain : {"l1", "l2", "linf", "simplex"}, default="l1"
+        Type of feasible domain:
+        - "l1": L1-ball with sparsity pattern,
+        - "l2": L2-ball,
+        - "linf": L∞-ball,
+        - "simplex": probability simplex.
+    k_sparse : int, default=5
+        Number of nonzero entries in the true parameter vector (for "l1" or "simplex" domains).
+    rho : float, default=0.95
+        Correlation parameter for the Toeplitz covariance matrix of features.
+    col_scale : float, default=10.0
+        Exponential scaling factor applied to feature columns. 
+        If 1.0, no scaling is applied.
+    flip_y : float, default=0.0
+        Fraction of labels to flip at random (label noise).
+    margin : float, default=0.5
+        Scaling factor applied to the linear logits. Controls the separation 
+        between classes: larger values make classification easier, smaller values 
+        make the problem harder.
+    class_bias : float, default=0.0
+        Additive bias term in the logits.
+    x0_mode : {"center", "vertex"}, default="center"
+        Initialization mode for the starting point:
+        - "center": the zero vector,
+        - "vertex": a random extreme point of the feasible domain.
+    noise : float, default=0.01
+        Standard deviation of Gaussian noise added to logits before thresholding.
+
+    Returns
+    -------
+    f : LogisticRegression
+        Logistic regression loss function object (data-fitted).
+    h : SquaredL2Norm
+        Squared L2 regularization function object.
+    L : float
+        Smoothness parameter with respect to the L2 norm.
+    L0 : float
+        Baseline smoothness constant (small positive value).
+    L1 : float
+        Smoothness parameter with respect to the L1 norm.
+    x0 : jax.numpy.ndarray, shape (n_features,)
+        Initial point for optimization.
+    X : jax.numpy.ndarray, shape (n_samples, n_features)
+        Design matrix with correlated Gaussian features.
+    y : jax.numpy.ndarray, shape (n_samples,)
+        Generated binary labels in {-1, +1}.
+    """
+
     # Split RNG keys
     key, key_X, key_true, key_noise, key_flip = jax.random.split(key, 5)
 
