@@ -181,7 +181,9 @@ def FW_alg_L0_L1_shortest_step(
         g_norm = jnp.linalg.norm(g)
         while True:
             a_k = L0 + L1 * g_norm
-            alpha_k = min((-grad_d_prod / (a_k * div * math.e)) ** (1 / (gamma - 1)), 1)
+            # attention: in case of euklidian divergence, we have div = 0.5 ||s-x||^2
+            # so we already have 2 power in the denominator
+            alpha_k = min((-grad_d_prod / (a_k * div * math.e)) ** (1 / (gamma - 1)), 1) 
             x1 = x + alpha_k * d_k
 
             if not linesearch:
