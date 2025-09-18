@@ -13,7 +13,7 @@ def FW_alg_div_step(
     epsilon=1e-14, linesearch=True, ls_ratio=2,
     verbose=True, verbskip=1
 ):
-    """
+    r"""
     Frank-Wolfe's algorithm with the Bregman divergence (JAX version)
     """
 
@@ -29,9 +29,9 @@ def FW_alg_div_step(
         print("     k      F(x)         Lk       time")
 
     start_time = time.time()
-    F = jnp.zeros(maxitrs, dtype=jnp.float64)
-    Ls = jnp.ones(maxitrs, dtype=jnp.float64)
-    T = jnp.zeros(maxitrs, dtype=jnp.float64)
+    F = jnp.zeros(maxitrs, dtype=jnp.float32)
+    Ls = jnp.ones(maxitrs, dtype=jnp.float32)
+    T = jnp.zeros(maxitrs, dtype=jnp.float32)
     delta = 1e-6
 
     x = jnp.copy(x0)
@@ -65,6 +65,8 @@ def FW_alg_div_step(
             if not linesearch:
                 break
 
+            assert math.isinf(L) == False, "L is infinite"
+
             if f.func_grad(x1, flag=0) <= fx + alpha_k * grad_d_prod + alpha_k ** gamma * L * div:
                 break
 
@@ -81,11 +83,12 @@ def FW_alg_div_step(
 
     return x, F[:k+1], Ls[:k+1], T[:k+1]
 
+
 def FW_alg_L0_L1_shortest_step(
     f, h, L0, L1, x0, maxitrs, gamma, lmo, epsilon=1e-14,
     linesearch=True, ls_ratio=2, verbose=True, verbskip=1
 ):
-    """
+    r"""
     Frank-Wolfe algorithm for (L0, L1)-smooth functions with shortest-step rule.
 
     This routine minimizes a composite objective of the form
@@ -254,7 +257,7 @@ def FW_alg_descent_step(f, h, x0, maxitrs, lmo, epsilon=1e-14, verbose=True, ver
 def FW_alg_div_step_adapt(f, h, L, x0, maxitrs, gamma, gamma_max, lmo, ls_ratio, 
                           divisor_for_tse, change_tse_each_n=2, epsilon=1e-14, linesearch=True, 
                           verbose=True, verbskip=1):
-    """
+    r"""
     Frank-Wolfe's algorithm with the Bregman divergence
 
     Inputs:
@@ -369,7 +372,7 @@ def FW_l0l1_log_and_linear_step(
     L0_max=None, L1_max=None, linesearch=True, verbose=True, 
     verbskip=50,
 ):
-    """
+    r"""
     The step-size rule is logarithmic when `L1 * ||d_k|| \geq ln2` is large, and
       $L_1 (- \nabla f(x_k)^\top d_k) / (L_0 + L_1 \| \nabla f(x_k) \|) \| d_k \|$ otherwise.
 
@@ -519,7 +522,7 @@ def FW_l0l1_log_only(
     L0_max=None, L1_max=None, linesearch=True, verbose=True, 
     verbskip=50,
 ):
-    """
+    r"""
     Frank-Wolfe algorithm for (L0, L1)-smooth functions with log only step size.
     Here `L1` is adaptively set to satisfy `L1 >= log(2) / ||d_k||` to ensure log only step size
     at each iteratoin.

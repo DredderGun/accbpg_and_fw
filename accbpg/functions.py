@@ -45,19 +45,18 @@ class DOptimalObj(RSmoothFunction):
         assert x.min() >= 0,     "DOptimalObj: x needs to be nonnegative"
         HXHT = np.dot(self.H*x, self.H.T)
         
-        if flag == 0:       # only return function value
-            f = -np.log(np.linalg.det(HXHT))
+        sign, logdet = np.linalg.slogdet(HXHT)
+        if sign <= 0: # this check was offered by ChatGPT
+            raise ValueError("HXHT is singular or not positive definite")
+        f = -logdet
+
+        if flag == 0: # only return function value
             return f
         
-        HXHTinvH = np.dot(np.linalg.inv(HXHT), self.H)
+        # ChatGPT offered it instead of this: HXHTinvH = np.dot(np.linalg.inv(HXHT), self.H)
+        HXHTinvH = np.linalg.solve(HXHT, self.H)
         g = - np.sum(self.H * HXHTinvH, axis=0)
-
-        if flag == 1:       # only return gradient
-            return g
-        
-        # return both function value and gradient
-        f = -np.log(np.linalg.det(HXHT))
-        return f, g
+        return g if flag == 1 else (f, g)
 
     def func_grad_slow(self, x, flag=2):
         assert x.size == self.n, "DOptimalObj: x.size not equal to n"
@@ -325,7 +324,7 @@ class BurgEntropyL2(BurgEntropy):
 
        
 class BurgEntropySimplex(BurgEntropy):
-    """
+    r"""
     h(x) = - sum_{i=1}^n log(x[i])  used in the context of solving 
     min_{x \in C} f(x)  where C is the standard simplex, with  Psi(x) = 0
     """

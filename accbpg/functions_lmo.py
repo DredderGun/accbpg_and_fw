@@ -14,7 +14,7 @@ def lmo_nuclear_norm_ball():
 
 
 def lmo_l2_ball(radius, center=None):
-    """
+    r"""
     The Frank-Wolfe lmo function for the l2 ball:
     x \in {x : ||x - center||_2 <= radius}
     
@@ -152,7 +152,7 @@ def lmo_simplex(radius=1):
 
     def f(g):
         s = np.zeros(g.shape)
-        s += 1e-60
+        s += 1e-15
         min_indices = np.where(g == np.min(g))[0]
         s[min_indices[0]] = radius
         return s
