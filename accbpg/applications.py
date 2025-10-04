@@ -648,6 +648,7 @@ def hard_FW_log_reg_jax(
     row_norms = jnp.linalg.norm(X, axis=1)
     L = jnp.max(row_norms) ** 2
     L1 = jnp.max(row_norms)
+    # L0 = L1.copy()
     L0 = 1e-12
 
     # Build your loss functions here

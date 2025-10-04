@@ -6,8 +6,7 @@ from .functions import *
 from .functions_lmo import *
 from .algorithms import (BPG, ABPG, ABPG_expo, ABPG_gain, ABDA, AIBM, AdaptFGM, 
                          UniversalGM, PrimalDualSwitchingGradientMethod)
-from .algorithms_fw import (FW_alg_div_step, FW_alg_descent_step, FW_l0l1_log_and_linear_step, FW_l0l1_log_only, FW_alg_L0_L1_shortest_step,
-                            FW_alg_div_step_adapt)
+from .algorithms_fw import (FW_alg_div_step, FW_alg_descent_step, FW_l0l1_log_and_linear_step, FW_l0l1_log_only, FW_alg_L0_L1_shortest_step)
 from .applications import (D_opt_libsvm, D_opt_design, D_opt_KYinit,
                            Poisson_regrL1, Poisson_regrL2, KL_nonneg_regr,
                            Poisson_regr_simplex, Poisson_regr_simplex_acc,
